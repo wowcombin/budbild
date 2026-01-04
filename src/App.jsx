@@ -170,20 +170,45 @@ function App({ onLogout, currentUser }) {
     setShowAddIncome(false);
   };
 
-  // Переход на новый месяц
+  // Переход на новый месяц - сохраняем остатки в накопления
   const moveToNextMonth = () => {
     const date = new Date(currentMonth);
     date.setMonth(date.getMonth() + 1);
     const newMonth = date.toISOString().slice(0, 7);
     
-    const updatedCategories = categories.map(cat => ({
-      ...cat,
-      balance: cat.carryOver ? cat.balance : 0
-    }));
+    // Для каждой категории: остаток за месяц добавляется к накоплениям
+    const updatedCategories = categories.map(cat => {
+      const allocated = getAmountForCategory(cat); // От зарплаты
+      const spent = getSpentThisMonth(cat.id); // Потрачено за месяц
+      const monthlyRemainder = allocated - spent; // Остаток за месяц
+      
+      if (cat.carryOver) {
+        // Накопительная категория: добавляем остаток к накоплениям
+        return {
+          ...cat,
+          balance: (cat.balance || 0) + monthlyRemainder
+        };
+      } else {
+        // Не накопительная: остаток сгорает, баланс остается как был
+        return {
+          ...cat,
+          balance: cat.balance || 0
+        };
+      }
+    });
+    
+    // Показываем итоги
+    const summary = updatedCategories.map(cat => {
+      const oldBalance = categories.find(c => c.id === cat.id)?.balance || 0;
+      const diff = cat.balance - oldBalance;
+      return `${cat.name}: ${diff >= 0 ? '+' : ''}${diff.toLocaleString('de-DE')}€ → ${cat.balance.toLocaleString('de-DE')}€`;
+    }).join('\n');
     
     setCategories(updatedCategories);
     setCurrentMonth(newMonth);
-    alert(`Переход на ${newMonth}`);
+    setMonthlyIncome(''); // Обнуляем зарплату для нового месяца
+    
+    alert(`✅ Переход на ${newMonth}\n\nОстатки добавлены к накоплениям:\n${summary}`);
   };
 
   // Добавление цели
@@ -652,27 +677,38 @@ function App({ onLogout, currentUser }) {
                           marginBottom: '1rem'
                         }}>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>Текущий баланс</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>💰 Сейчас</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: motivation.color }}>
                               {progress.currentBalance.toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>Цель</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📈 +В месяц</div>
+                            <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4caf50' }}>
+                              +{(category ? getAmountForCategory(category) : 0).toLocaleString('de-DE')} €
+                            </div>
+                          </div>
+                          <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>🎯 Цель</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
                               {(goal.targetAmount || 0).toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>Осталось</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>⏳ Осталось</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: progress.remaining > 0 ? '#f44336' : '#4caf50' }}>
                               {Math.max(0, progress.remaining).toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>Времени</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📅 Месяцев до цели</div>
                             <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                              {progress.weeksLeft > 0 ? `${progress.weeksLeft} нед` : `${progress.daysLeft} дн`}
+                              {(() => {
+                                const monthlyAdd = category ? getAmountForCategory(category) : 0;
+                                if (monthlyAdd <= 0) return '∞';
+                                const monthsNeeded = Math.ceil(progress.remaining / monthlyAdd);
+                                return monthsNeeded <= 0 ? '✅ Готово!' : `~${monthsNeeded} мес`;
+                              })()}
                             </div>
                           </div>
                         </div>
