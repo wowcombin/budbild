@@ -354,38 +354,49 @@ function App({ onLogout, currentUser }) {
                 </button>
               </div>
               <div>
-                {categories.map(cat => (
-                  <div key={cat.id} className="category-item">
-                    <div className="category-header">
-                      <div className="category-info">
-                        <h3>{cat.name}</h3>
-                        <p style={{ fontSize: '0.875rem', color: '#666' }}>
-                          {cat.carryOver ? '♻️ Переносится на следующий месяц' : '📅 Сбрасывается каждый месяц'}
-                        </p>
-                        {cat.balance < 0 && (
-                          <p style={{ fontSize: '0.875rem', color: '#f44336', fontWeight: 'bold' }}>
-                            ⚠️ Дефицит - будет покрыт в следующем месяце
+                {categories.map((cat, index) => {
+                  // Расчет ожидаемой суммы при распределении
+                  const expectedAmount = index === 0 
+                    ? businessAmount 
+                    : distributionBase * (cat.percent / 100);
+                  
+                  return (
+                    <div key={cat.id} className="category-item">
+                      <div className="category-header">
+                        <div className="category-info">
+                          <h3>{cat.name}</h3>
+                          <p style={{ fontSize: '0.875rem', color: '#666' }}>
+                            {cat.carryOver ? '♻️ Переносится на следующий месяц' : '📅 Сбрасывается каждый месяц'}
                           </p>
-                        )}
-                      </div>
-                      <div className="category-balance">
-                        <div className="amount" style={{ color: cat.balance < 0 ? '#f44336' : '#5c6bc0' }}>
-                          {cat.balance.toLocaleString('de-DE')} €
+                          {/* Показываем ожидаемую сумму при распределении */}
+                          <p style={{ fontSize: '0.875rem', color: '#4caf50' }}>
+                            📊 При распределении: +{expectedAmount.toLocaleString('de-DE')} €
+                          </p>
+                          {cat.balance < 0 && (
+                            <p style={{ fontSize: '0.875rem', color: '#f44336', fontWeight: 'bold' }}>
+                              ⚠️ Дефицит - будет покрыт в следующем месяце
+                            </p>
+                          )}
                         </div>
-                        <div className="percent">{cat.percent}%</div>
+                        <div className="category-balance">
+                          <div className="amount" style={{ color: cat.balance < 0 ? '#f44336' : '#5c6bc0' }}>
+                            {cat.balance.toLocaleString('de-DE')} €
+                          </div>
+                          <div className="percent">{cat.percent}%</div>
+                        </div>
+                      </div>
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{ 
+                            width: `${Math.min(Math.max((cat.balance / expectedAmount) * 100, 0), 100)}%`,
+                            backgroundColor: cat.balance < 0 ? '#f44336' : '#5c6bc0'
+                          }}
+                        ></div>
                       </div>
                     </div>
-                    <div className="progress-bar">
-                      <div
-                        className="progress-fill"
-                        style={{ 
-                          width: `${Math.min(Math.max((cat.balance / (remainingAfterBase * cat.percent / 100)) * 100, 0), 100)}%`,
-                          backgroundColor: cat.balance < 0 ? '#f44336' : '#5c6bc0'
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -479,12 +490,27 @@ function App({ onLogout, currentUser }) {
                         placeholder="%"
                         disabled={index === 0}
                         className="input"
-                        style={{ width: '100px' }}
+                        style={{ width: '80px' }}
                       />
+                      <span style={{ fontSize: '0.875rem', color: '#666' }}>%</span>
                       <button onClick={() => removeCategory(cat.id)} className="btn btn-danger">
                         🗑️
                       </button>
-      </div>
+                    </div>
+                    <div className="expense-item" style={{ marginTop: '0.5rem' }}>
+                      <label style={{ fontSize: '0.875rem', color: '#666', marginRight: '0.5rem' }}>
+                        💰 Текущий баланс:
+                      </label>
+                      <input
+                        type="number"
+                        value={cat.balance}
+                        onChange={(e) => updateCategory(cat.id, 'balance', parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="input"
+                        style={{ width: '150px' }}
+                      />
+                      <span style={{ fontSize: '0.875rem', color: '#666' }}>€</span>
+                    </div>
                     <label className="checkbox-label">
                       <input
                         type="checkbox"
