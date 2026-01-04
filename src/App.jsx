@@ -29,6 +29,22 @@ function App({ onLogout, currentUser }) {
   // UI состояния
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
+  
+  // Популярные траты (шаблоны)
+  const [popularExpenses] = useState([
+    { icon: '🍕', name: 'Еда в кафе' },
+    { icon: '🛒', name: 'Супермаркет' },
+    { icon: '⛽', name: 'Бензин' },
+    { icon: '🚕', name: 'Такси' },
+    { icon: '🎬', name: 'Кино/Развлечения' },
+    { icon: '💊', name: 'Аптека' },
+    { icon: '✂️', name: 'Салон красоты' },
+    { icon: '🏋️', name: 'Спортзал' },
+    { icon: '📱', name: 'Связь/Интернет' },
+    { icon: '🎁', name: 'Подарки' },
+    { icon: '🏥', name: 'Здоровье' },
+    { icon: '📚', name: 'Образование' },
+  ]);
 
   // Загрузка данных из localStorage для текущего пользователя
   useEffect(() => {
@@ -192,6 +208,28 @@ function App({ onLogout, currentUser }) {
     setCategories(updatedCategories);
     setCurrentMonth(newMonth);
     alert(`Переход на ${newMonth}`);
+  };
+
+  // Группировка транзакций по датам
+  const groupTransactionsByDate = (transactions) => {
+    const grouped = {};
+    
+    [...transactions].reverse().forEach(tr => {
+      const date = new Date(tr.date);
+      const dateKey = date.toLocaleDateString('ru-RU', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        weekday: 'long'
+      });
+      
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = [];
+      }
+      grouped[dateKey].push(tr);
+    });
+    
+    return grouped;
   };
 
   return (
@@ -435,21 +473,65 @@ function App({ onLogout, currentUser }) {
               <p className="empty-state">Пока нет транзакций</p>
             ) : (
               <div>
-                {[...transactions].reverse().map(tr => (
-                  <div key={tr.id} className="transaction-item">
-                    <div className="transaction-header">
-                      <div>
-                        <div className="transaction-type">
-                          {tr.type === 'distribution' ? '🔄 Распределение' : '💸 Расход'}
-                        </div>
-                        <div className="transaction-desc">{tr.description || tr.categoryName}</div>
-                        <div className="transaction-date">
-                          {new Date(tr.date).toLocaleString('ru-RU')}
+                {Object.entries(groupTransactionsByDate(transactions)).map(([dateKey, dayTransactions]) => (
+                  <div key={dateKey} style={{ marginBottom: '2rem' }}>
+                    {/* Заголовок дня */}
+                    <div style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      color: 'white',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '8px',
+                      marginBottom: '1rem',
+                      fontWeight: 'bold',
+                      fontSize: '0.95rem'
+                    }}>
+                      📅 {dateKey}
+                    </div>
+                    
+                    {/* Транзакции за день */}
+                    {dayTransactions.map(tr => (
+                      <div key={tr.id} className="transaction-item">
+                        <div className="transaction-header">
+                          <div>
+                            <div className="transaction-type">
+                              {tr.type === 'distribution' ? '🔄 Распределение' : '💸 Расход'}
+                            </div>
+                            <div className="transaction-desc">{tr.description || tr.categoryName}</div>
+                            <div className="transaction-date">
+                              {new Date(tr.date).toLocaleTimeString('ru-RU', { 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}
+                            </div>
+                          </div>
+                          <div className={`transaction-amount ${tr.type === 'distribution' ? 'positive' : 'negative'}`}>
+                            {tr.type === 'distribution' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
+                          </div>
                         </div>
                       </div>
-                        <div className={`transaction-amount ${tr.type === 'distribution' ? 'positive' : 'negative'}`}>
-                          {tr.type === 'distribution' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
-                        </div>
+                    ))}
+                    
+                    {/* Итого за день */}
+                    <div style={{
+                      borderTop: '2px solid #e0e0e0',
+                      paddingTop: '0.75rem',
+                      marginTop: '0.75rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontWeight: 'bold',
+                      fontSize: '0.95rem'
+                    }}>
+                      <span>Итого за день:</span>
+                      <span style={{ 
+                        color: dayTransactions.reduce((sum, tr) => {
+                          return sum + (tr.type === 'expense' ? -tr.amount : tr.amount);
+                        }, 0) < 0 ? '#f44336' : '#4caf50'
+                      }}>
+                        {dayTransactions.reduce((sum, tr) => {
+                          return sum + (tr.type === 'expense' ? -tr.amount : tr.amount);
+                        }, 0).toLocaleString('de-DE')} €
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -464,6 +546,50 @@ function App({ onLogout, currentUser }) {
         <div className="modal-overlay">
           <div className="modal">
             <h3>Добавить расход</h3>
+            
+            {/* Популярные траты */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                💫 Быстрый выбор:
+              </label>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
+                gap: '0.5rem' 
+              }}>
+                {popularExpenses.map((exp, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => {
+                      const descInput = document.querySelector('input[name="description"]');
+                      if (descInput) descInput.value = exp.name;
+                    }}
+                    style={{
+                      padding: '0.75rem 0.5rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '8px',
+                      background: 'white',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.borderColor = '#5c6bc0';
+                      e.currentTarget.style.background = '#f5f5ff';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.borderColor = '#e0e0e0';
+                      e.currentTarget.style.background = 'white';
+                    }}
+                  >
+                    <div style={{ fontSize: '1.5rem', marginBottom: '0.25rem' }}>{exp.icon}</div>
+                    <div style={{ fontSize: '0.75rem' }}>{exp.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -478,11 +604,13 @@ function App({ onLogout, currentUser }) {
               <div className="form-group">
                 <label>Категория</label>
                   <select name="category" required className="input">
-                    {categories.map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.name} ({cat.balance.toLocaleString('de-DE')} €{cat.balance < 0 ? ' - ДЕФИЦИТ' : ''})
-                      </option>
-                    ))}
+                    {categories
+                      .filter(cat => cat.name !== 'Новый бизнес') // Исключаем накопительную категорию
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name} ({cat.balance.toLocaleString('de-DE')} €{cat.balance < 0 ? ' - ДЕФИЦИТ' : ''})
+                        </option>
+                      ))}
                   </select>
               </div>
               <div className="form-group">
@@ -503,6 +631,7 @@ function App({ onLogout, currentUser }) {
                   name="description"
                   required
                   className="input"
+                  placeholder="Выберите выше или введите свое"
                 />
               </div>
               <div className="form-actions">
