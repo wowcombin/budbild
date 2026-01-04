@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
 import './App.css';
 
-function App() {
+function App({ onLogout }) {
   // Состояние для базовых настроек
   const [monthlyIncome, setMonthlyIncome] = useState('');
   const [baseExpenses, setBaseExpenses] = useState([
@@ -195,8 +196,13 @@ function App() {
     <div className="app">
       {/* Header */}
       <header className="header">
-        <h1>💰 Планировщик Бюджета</h1>
-        <p>Месяц: {currentMonth}</p>
+        <div>
+          <h1>💰 Планировщик Бюджета</h1>
+          <p>Месяц: {currentMonth}</p>
+        </div>
+        <button onClick={onLogout} className="btn btn-secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}>
+          🚪 Выход
+        </button>
       </header>
 
       {/* Navigation */}

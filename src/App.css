@@ -7,6 +7,9 @@
   background: white;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .header h1 {
