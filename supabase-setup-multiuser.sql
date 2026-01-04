@@ -50,13 +50,14 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id TEXT NOT NULL,
-  type TEXT NOT NULL, -- 'distribution' или 'expense'
+  type TEXT NOT NULL, -- 'income' или 'expense'
   date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   month TEXT NOT NULL,
   category_id UUID,
   category_name TEXT,
   amount DECIMAL(10, 2) NOT NULL,
   description TEXT,
+  refund_pending BOOLEAN DEFAULT FALSE, -- Ожидает возврат
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

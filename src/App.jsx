@@ -175,6 +175,27 @@ function App({ onLogout, currentUser }) {
     setShowAddIncome(false);
   };
 
+  // Пометить транзакцию как "ожидает возврат"
+  const markForRefund = (transactionId) => {
+    setTransactions(transactions.map(t => 
+      t.id === transactionId ? { ...t, refundPending: true } : t
+    ));
+  };
+
+  // Подтвердить возврат и удалить транзакцию
+  const confirmRefund = (transactionId) => {
+    if (confirm('Подтвердить получение возврата? Транзакция будет удалена.')) {
+      setTransactions(transactions.filter(t => t.id !== transactionId));
+    }
+  };
+
+  // Отменить запрос на возврат
+  const cancelRefund = (transactionId) => {
+    setTransactions(transactions.map(t => 
+      t.id === transactionId ? { ...t, refundPending: false } : t
+    ));
+  };
+
   // Переход на новый месяц - сохраняем остатки в накопления
   const moveToNextMonth = () => {
     const date = new Date(currentMonth);
@@ -745,15 +766,44 @@ function App({ onLogout, currentUser }) {
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📅 Дней до цели</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📅 До дедлайна</div>
                             <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                              {progress.remaining <= 0 ? '✅ Достигнуто!' : 
-                               !category ? '—' :
-                               monthlyAmount <= 0 ? '∞ (введите зарплату)' : 
-                               `~${Math.ceil(progress.remaining / monthlyAmount * 30)} дн`}
+                              {progress.daysLeft || 0} дн
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#999' }}>
+                              ({new Date(goal.targetDate).toLocaleDateString('ru-RU')})
                             </div>
                           </div>
                         </div>
+
+                        {/* Прогноз достижения */}
+                        {progress.remaining > 0 && category && monthlyAmount > 0 && (
+                          <div style={{
+                            background: Math.ceil(progress.remaining / monthlyAmount * 30) <= progress.daysLeft 
+                              ? 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)' 
+                              : 'linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%)',
+                            padding: '1rem',
+                            borderRadius: '8px',
+                            marginTop: '1rem',
+                            textAlign: 'center'
+                          }}>
+                            <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                              📊 При текущем темпе (+{monthlyAmount.toLocaleString('de-DE')} €/мес)
+                            </div>
+                            <div style={{ 
+                              fontSize: '1.3rem', 
+                              fontWeight: 'bold',
+                              color: Math.ceil(progress.remaining / monthlyAmount * 30) <= progress.daysLeft ? '#2e7d32' : '#c62828'
+                            }}>
+                              ~{Math.ceil(progress.remaining / monthlyAmount * 30)} дней до цели
+                            </div>
+                            <div style={{ fontSize: '0.8rem', marginTop: '0.5rem', color: '#666' }}>
+                              {Math.ceil(progress.remaining / monthlyAmount * 30) <= progress.daysLeft 
+                                ? '✅ Успеете к сроку!' 
+                                : `⚠️ Не успеете на ${Math.ceil(progress.remaining / monthlyAmount * 30) - progress.daysLeft} дней`}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Описание */}
                         {goal.description && (
@@ -817,11 +867,22 @@ function App({ onLogout, currentUser }) {
                           
                           {/* Транзакции за день (новые сверху) */}
                           {dayTransactions.sort((a, b) => new Date(b.date) - new Date(a.date)).map(tr => (
-                            <div key={tr.id} className="transaction-item">
+                            <div key={tr.id} className="transaction-item" style={{
+                              ...(tr.refundPending ? {
+                                background: 'linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%)',
+                                border: '2px dashed #ff9800'
+                              } : {})
+                            }}>
                               <div className="transaction-header">
-                                <div>
+                                <div style={{ flex: 1 }}>
                                   <div className="transaction-type">
+                                    {tr.refundPending && '🔄 '}
                                     {tr.type === 'income' ? '💰 Доход' : '💸 Расход'}
+                                    {tr.refundPending && <span style={{ 
+                                      color: '#ff9800', 
+                                      fontSize: '0.8rem',
+                                      marginLeft: '0.5rem'
+                                    }}>Ожидает возврат</span>}
                                   </div>
                                   <div className="transaction-desc">{tr.description || tr.categoryName}</div>
                                   <div className="transaction-date">
@@ -831,8 +892,65 @@ function App({ onLogout, currentUser }) {
                                     })}
                                   </div>
                                 </div>
-                                <div className={`transaction-amount ${tr.type === 'income' ? 'positive' : 'negative'}`}>
-                                  {tr.type === 'income' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <div className={`transaction-amount ${tr.type === 'income' ? 'positive' : 'negative'}`}
+                                    style={tr.refundPending ? { textDecoration: 'line-through', opacity: 0.6 } : {}}>
+                                    {tr.type === 'income' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
+                                  </div>
+                                  
+                                  {/* Кнопки возврата */}
+                                  {tr.type === 'expense' && !tr.refundPending && (
+                                    <button
+                                      onClick={() => markForRefund(tr.id)}
+                                      title="Запросить возврат"
+                                      style={{
+                                        padding: '0.3rem 0.5rem',
+                                        fontSize: '0.75rem',
+                                        background: '#fff3e0',
+                                        border: '1px solid #ff9800',
+                                        borderRadius: '4px',
+                                        cursor: 'pointer',
+                                        color: '#e65100'
+                                      }}
+                                    >
+                                      ↩️ Возврат
+                                    </button>
+                                  )}
+                                  
+                                  {tr.refundPending && (
+                                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                      <button
+                                        onClick={() => confirmRefund(tr.id)}
+                                        title="Возврат получен"
+                                        style={{
+                                          padding: '0.3rem 0.5rem',
+                                          fontSize: '0.75rem',
+                                          background: '#e8f5e9',
+                                          border: '1px solid #4caf50',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          color: '#2e7d32'
+                                        }}
+                                      >
+                                        ✅
+                                      </button>
+                                      <button
+                                        onClick={() => cancelRefund(tr.id)}
+                                        title="Отменить возврат"
+                                        style={{
+                                          padding: '0.3rem 0.5rem',
+                                          fontSize: '0.75rem',
+                                          background: '#ffebee',
+                                          border: '1px solid #f44336',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          color: '#c62828'
+                                        }}
+                                      >
+                                        ❌
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>

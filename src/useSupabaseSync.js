@@ -72,7 +72,8 @@ export function useSupabaseSync(userId, data, setData) {
               categoryId: t.category_id,
               categoryName: t.category_name,
               amount: t.amount || 0,
-              description: t.description
+              description: t.description,
+              refundPending: t.refund_pending || false
             })) : [],
             // Цели из Supabase - связь по имени категории
             goals: goalsData ? goalsData.map(g => ({
@@ -182,6 +183,24 @@ export function useSupabaseSync(userId, data, setData) {
               target_date: goal.targetDate,
               start_balance: goal.startBalance || 0,
               created_at: goal.createdAt || new Date().toISOString()
+            }))
+          );
+        }
+
+        // 5. Транзакции - синхронизируем все (включая refund_pending)
+        await supabase.from('transactions').delete().eq('user_id', userId);
+        if (data.transactions && data.transactions.length > 0) {
+          await supabase.from('transactions').insert(
+            data.transactions.map(t => ({
+              user_id: userId,
+              type: t.type,
+              date: t.date,
+              month: t.month,
+              category_id: t.categoryId,
+              category_name: t.categoryName,
+              amount: t.amount,
+              description: t.description,
+              refund_pending: t.refundPending || false
             }))
           );
         }
