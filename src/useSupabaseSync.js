@@ -17,18 +17,20 @@ export function useSupabaseSync(userId, data, setData) {
       console.log('🔄 Загрузка данных для пользователя:', userId);
       
       try {
-        // Пробуем загрузить из Supabase
-        const [settingsRes, expensesRes, catsRes, transRes] = await Promise.all([
+        // Загружаем все данные параллельно
+        const [settingsRes, expensesRes, catsRes, transRes, goalsRes] = await Promise.all([
           supabase.from('budget_settings').select('*').eq('user_id', userId).maybeSingle(),
           supabase.from('base_expenses').select('*').eq('user_id', userId).order('sort_order'),
           supabase.from('categories').select('*').eq('user_id', userId).order('sort_order'),
-          supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false })
+          supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false }),
+          supabase.from('goals').select('*').eq('user_id', userId).order('created_at', { ascending: false })
         ]);
 
         const settings = settingsRes.data;
         const expenses = expensesRes.data;
         const cats = catsRes.data;
         const trans = transRes.data;
+        const goalsData = goalsRes.data;
 
         // Проверяем есть ли данные в Supabase
         const hasSupabaseData = settings || (expenses && expenses.length > 0) || (cats && cats.length > 0);
@@ -72,16 +74,18 @@ export function useSupabaseSync(userId, data, setData) {
               amount: t.amount || 0,
               description: t.description
             })) : [],
-            // Загружаем goals из localStorage (не из Supabase)
-            goals: (() => {
-              try {
-                const goalsKey = `budgetGoals_${userId}`;
-                const savedGoals = localStorage.getItem(goalsKey);
-                return savedGoals ? JSON.parse(savedGoals) : [];
-              } catch {
-                return [];
-              }
-            })()
+            // Цели из Supabase - связь по имени категории
+            goals: goalsData ? goalsData.map(g => ({
+              id: g.id,
+              name: g.name,
+              description: g.description,
+              categoryName: g.category_name || '', // ВАЖНО: связь по имени
+              targetAmount: g.target_amount || 0,
+              targetDate: g.target_date,
+              icon: g.icon || '🎯',
+              createdAt: g.created_at,
+              startBalance: g.start_balance || 0
+            })) : []
           });
         } else {
           // Если в Supabase пусто - загружаем из localStorage
@@ -113,11 +117,6 @@ export function useSupabaseSync(userId, data, setData) {
   useEffect(() => {
     if (!userId || !initialized.current || isLoading.current) return;
     
-    // Пропускаем начальные данные
-    if (!data.monthlyIncome && data.categories.every(c => c.balance === 0)) {
-      return;
-    }
-
     // Дебаунс
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
@@ -126,17 +125,13 @@ export function useSupabaseSync(userId, data, setData) {
     saveTimeout.current = setTimeout(async () => {
       console.log('💾 Сохранение данных...');
       
-      // Сохраняем в localStorage
+      // Сохраняем в localStorage как backup
       const storageKey = `budgetData_${userId}`;
       localStorage.setItem(storageKey, JSON.stringify(data));
-      
-      // Сохраняем goals отдельно
-      const goalsKey = `budgetGoals_${userId}`;
-      localStorage.setItem(goalsKey, JSON.stringify(data.goals || []));
 
       // Сохраняем в Supabase
       try {
-        // Настройки бюджета
+        // 1. Настройки бюджета
         await supabase.from('budget_settings').upsert({
           user_id: userId,
           monthly_income: parseFloat(data.monthlyIncome) || 0,
@@ -144,7 +139,7 @@ export function useSupabaseSync(userId, data, setData) {
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
 
-        // Базовые расходы - удаляем старые и добавляем новые
+        // 2. Базовые расходы - удаляем старые и добавляем новые
         await supabase.from('base_expenses').delete().eq('user_id', userId);
         if (data.baseExpenses && data.baseExpenses.length > 0) {
           await supabase.from('base_expenses').insert(
@@ -157,7 +152,7 @@ export function useSupabaseSync(userId, data, setData) {
           );
         }
 
-        // Категории - удаляем старые и добавляем новые
+        // 3. Категории - удаляем старые и добавляем новые
         await supabase.from('categories').delete().eq('user_id', userId);
         if (data.categories && data.categories.length > 0) {
           await supabase.from('categories').insert(
@@ -169,6 +164,24 @@ export function useSupabaseSync(userId, data, setData) {
               carry_over: cat.carryOver || false,
               is_savings: cat.isSavings || false,
               sort_order: index
+            }))
+          );
+        }
+
+        // 4. Цели - удаляем старые и добавляем новые (связь по имени категории!)
+        await supabase.from('goals').delete().eq('user_id', userId);
+        if (data.goals && data.goals.length > 0) {
+          await supabase.from('goals').insert(
+            data.goals.map(goal => ({
+              user_id: userId,
+              name: goal.name,
+              description: goal.description || '',
+              icon: goal.icon || '🎯',
+              category_name: goal.categoryName, // ВАЖНО: связь по имени
+              target_amount: goal.targetAmount || 0,
+              target_date: goal.targetDate,
+              start_balance: goal.startBalance || 0,
+              created_at: goal.createdAt || new Date().toISOString()
             }))
           );
         }

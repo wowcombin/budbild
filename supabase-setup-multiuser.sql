@@ -60,14 +60,14 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 5. Таблица для целей
+-- 5. Таблица для целей (связь по имени категории для стабильности)
 CREATE TABLE IF NOT EXISTS goals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id TEXT NOT NULL,
   name TEXT NOT NULL,
   description TEXT,
   icon TEXT DEFAULT '🎯',
-  category_id TEXT NOT NULL,
+  category_name TEXT NOT NULL,  -- Связь по имени категории (не по ID!)
   target_amount DECIMAL(10, 2) NOT NULL,
   target_date DATE NOT NULL,
   start_balance DECIMAL(10, 2) DEFAULT 0,

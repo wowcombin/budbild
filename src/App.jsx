@@ -216,17 +216,22 @@ function App({ onLogout, currentUser }) {
     alert(`✅ Переход на ${newMonth}\n\nОстатки добавлены к накоплениям:\n${summary}`);
   };
 
-  // Добавление цели
+  // Добавление цели (связь по ИМЕНИ категории!)
   const addGoal = (goalData) => {
-    // Сравниваем ID как строки
-    const category = categories.find(c => String(c.id) === String(goalData.categoryId));
+    // Ищем категорию по имени
+    const category = categories.find(c => c.name === goalData.categoryName);
     const currentAvailable = category ? getAvailableBalance(category) : 0;
     
     const newGoal = {
       id: Date.now(),
-      ...goalData,
+      name: goalData.name,
+      description: goalData.description || '',
+      icon: goalData.icon || '🎯',
+      categoryName: goalData.categoryName, // Связь по имени!
+      targetAmount: parseFloat(goalData.targetAmount) || 0,
+      targetDate: goalData.targetDate,
       createdAt: new Date().toISOString(),
-      startBalance: currentAvailable // Запоминаем текущий доступный баланс
+      startBalance: currentAvailable
     };
     setGoals([...goals, newGoal]);
     setShowAddGoal(false);
@@ -239,31 +244,53 @@ function App({ onLogout, currentUser }) {
     }
   };
 
-  // Расчет прогресса цели
+  // Расчет прогресса цели (связь по ИМЕНИ категории!)
   const calculateGoalProgress = (goal) => {
-    if (!goal) return { progress: 0, remaining: 0, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0 };
+    if (!goal) return { progress: 0, remaining: 0, percent: 0, daysLeft: 0, daysToGoal: 0, currentBalance: 0, monthlyAmount: 0 };
     
     const targetAmount = goal.targetAmount || 0;
-    // Сравниваем ID как строки
-    const category = categories.find(c => String(c.id) === String(goal.categoryId));
-    if (!category) return { progress: 0, remaining: targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0, monthlyAmount: 0 };
+    
+    // Ищем категорию по имени
+    const category = categories.find(c => c.name === goal.categoryName);
+    if (!category) {
+      return { 
+        progress: 0, 
+        remaining: targetAmount, 
+        percent: 0, 
+        daysLeft: 0, 
+        daysToGoal: 0, 
+        currentBalance: 0, 
+        monthlyAmount: 0,
+        categoryNotFound: true 
+      };
+    }
 
-    // Используем доступный баланс (накопления + от зарплаты - расходы)
+    // Текущий баланс категории
     const currentBalance = getAvailableBalance(category);
+    // Сколько приходит в месяц от зарплаты
     const monthlyAmount = getAmountForCategory(category);
-    const startBalance = goal.startBalance || 0;
-    const progressAmount = Math.max(0, currentBalance - startBalance);
-    const remaining = Math.max(0, targetAmount - progressAmount);
-    const percent = targetAmount > 0 ? Math.min((progressAmount / targetAmount) * 100, 100) : 0;
+    
+    // Прогресс = текущий баланс (всё что накоплено)
+    const progress = Math.max(0, currentBalance);
+    const remaining = Math.max(0, targetAmount - progress);
+    const percent = targetAmount > 0 ? Math.min((progress / targetAmount) * 100, 100) : 0;
 
+    // Дней до целевой даты
     const targetDate = new Date(goal.targetDate);
     const today = new Date();
     const daysLeft = Math.max(0, Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)));
     
-    // Расчет дней до цели на основе ежемесячного накопления
-    const daysToGoal = monthlyAmount > 0 ? Math.ceil((remaining / monthlyAmount) * 30) : Infinity;
+    // Дней до достижения цели (при текущем темпе)
+    let daysToGoal = 0;
+    if (remaining <= 0) {
+      daysToGoal = 0; // Цель достигнута
+    } else if (monthlyAmount > 0) {
+      daysToGoal = Math.ceil((remaining / monthlyAmount) * 30);
+    } else {
+      daysToGoal = Infinity; // Нет дохода
+    }
 
-    return { progress: progressAmount, remaining, percent, daysLeft, daysToGoal, currentBalance, monthlyAmount };
+    return { progress, remaining, percent, daysLeft, daysToGoal, currentBalance, monthlyAmount };
   };
 
   // Мотивационное сообщение
@@ -614,8 +641,8 @@ function App({ onLogout, currentUser }) {
                       progress: rawProgress?.progress || 0
                     };
                     const motivation = getMotivationalMessage(progress.percent);
-                    // Сравниваем ID как строки (могут быть UUID или числа)
-                    const category = categories.find(c => String(c.id) === String(goal.categoryId));
+                    // Ищем категорию по ИМЕНИ
+                    const category = categories.find(c => c.name === goal.categoryName);
                     const monthlyAmount = category ? getAmountForCategory(category) : 0;
                     
                     return (
@@ -632,11 +659,11 @@ function App({ onLogout, currentUser }) {
                               {goal.icon} {goal.name}
                             </h3>
                             <p style={{ color: '#666', fontSize: '0.9rem' }}>
-                              Категория: {category?.name || '⚠️ Не найдена'} • До: {new Date(goal.targetDate).toLocaleDateString('ru-RU')}
+                              Категория: {goal.categoryName || '❓'} • До: {new Date(goal.targetDate).toLocaleDateString('ru-RU')}
                             </p>
                             {!category && (
                               <p style={{ color: '#f44336', fontSize: '0.8rem' }}>
-                                ⚠️ Категория удалена или изменена. Удалите цель и создайте заново.
+                                ⚠️ Категория "{goal.categoryName}" не найдена. Создайте её или удалите цель.
                               </p>
                             )}
       </div>
@@ -1022,8 +1049,8 @@ function App({ onLogout, currentUser }) {
                 addGoal({
                   name: formData.get('name'),
                   description: formData.get('description'),
-                  categoryId: formData.get('category'),
-                  targetAmount: parseFloat(formData.get('targetAmount')),
+                  categoryName: formData.get('category'), // Связь по имени!
+                  targetAmount: formData.get('targetAmount'),
                   targetDate: formData.get('targetDate'),
                   icon: formData.get('icon') || '🎯'
                 });
@@ -1055,8 +1082,8 @@ function App({ onLogout, currentUser }) {
                 <label>Категория для накопления</label>
                 <select name="category" required className="input">
                   {categories.map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name} ({(cat.balance || 0).toLocaleString('de-DE')} €)
+                    <option key={cat.name} value={cat.name}>
+                      {cat.name} ({getAvailableBalance(cat).toLocaleString('de-DE')} €)
                     </option>
                   ))}
                 </select>
