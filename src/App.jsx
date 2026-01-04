@@ -27,6 +27,8 @@ function App({ onLogout, currentUser }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const TRANSACTIONS_PER_PAGE = 20;
   
   // Подключаем синхронизацию (localStorage + Supabase в будущем)
   const { addTransactionToSupabase } = useSupabaseSync(currentUser.id, data, setData);
@@ -104,6 +106,16 @@ function App({ onLogout, currentUser }) {
   const distributeBudget = async () => {
     if (remainingAfterBase <= 0) {
       alert('Доход должен быть больше базовых расходов!');
+      return;
+    }
+
+    // Проверяем количество распределений в текущем месяце (максимум 2)
+    const distributionsThisMonth = transactions.filter(
+      tr => tr.type === 'distribution' && tr.month === currentMonth
+    ).length;
+    
+    if (distributionsThisMonth >= 2) {
+      alert(`Вы уже распределили бюджет ${distributionsThisMonth} раз(а) в этом месяце.\nМаксимум 2 распределения в месяц.`);
       return;
     }
 
@@ -264,14 +276,14 @@ function App({ onLogout, currentUser }) {
     <div className="app">
       {/* Header */}
       <header className="header">
-        <div>
+      <div>
           <h1>💰 Планировщик Бюджета</h1>
           <p>
             <span style={{ fontWeight: 'bold', color: '#5c6bc0' }}>{currentUser.displayName}</span>
             <span style={{ margin: '0 0.5rem', color: '#ccc' }}>•</span>
             Месяц: {currentMonth}
           </p>
-        </div>
+      </div>
         <button onClick={onLogout} className="btn btn-secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}>
           🚪 Выход
         </button>
@@ -570,8 +582,8 @@ function App({ onLogout, currentUser }) {
                             </h3>
                             <p style={{ color: '#666', fontSize: '0.9rem' }}>
                               Категория: {category?.name} • До: {new Date(goal.targetDate).toLocaleDateString('ru-RU')}
-                            </p>
-                          </div>
+        </p>
+      </div>
                           <button
                             onClick={() => deleteGoal(goal.id)}
                             className="btn btn-danger"
@@ -680,68 +692,130 @@ function App({ onLogout, currentUser }) {
               <p className="empty-state">Пока нет транзакций</p>
             ) : (
               <div>
-                {Object.entries(groupTransactionsByDate(transactions)).map(([dateKey, dayTransactions]) => (
-                  <div key={dateKey} style={{ marginBottom: '2rem' }}>
-                    {/* Заголовок дня */}
-                    <div style={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      color: 'white',
-                      padding: '0.75rem 1rem',
-                      borderRadius: '8px',
-                      marginBottom: '1rem',
-                      fontWeight: 'bold',
-                      fontSize: '0.95rem'
-                    }}>
-                      📅 {dateKey}
-                    </div>
-                    
-                    {/* Транзакции за день */}
-                    {dayTransactions.map(tr => (
-                      <div key={tr.id} className="transaction-item">
-                        <div className="transaction-header">
-                          <div>
-                            <div className="transaction-type">
-                              {tr.type === 'distribution' ? '🔄 Распределение' : '💸 Расход'}
-                            </div>
-                            <div className="transaction-desc">{tr.description || tr.categoryName}</div>
-                            <div className="transaction-date">
-                              {new Date(tr.date).toLocaleTimeString('ru-RU', { 
-                                hour: '2-digit', 
-                                minute: '2-digit' 
-                              })}
-                            </div>
+                {/* Сортируем транзакции: новые сверху */}
+                {(() => {
+                  const sortedTransactions = [...transactions].sort((a, b) => 
+                    new Date(b.date) - new Date(a.date)
+                  );
+                  
+                  // Пагинация
+                  const totalPages = Math.ceil(sortedTransactions.length / TRANSACTIONS_PER_PAGE);
+                  const startIndex = (historyPage - 1) * TRANSACTIONS_PER_PAGE;
+                  const paginatedTransactions = sortedTransactions.slice(startIndex, startIndex + TRANSACTIONS_PER_PAGE);
+                  
+                  // Группируем по датам
+                  const grouped = groupTransactionsByDate(paginatedTransactions);
+                  
+                  return (
+                    <>
+                      {Object.entries(grouped).map(([dateKey, dayTransactions]) => (
+                        <div key={dateKey} style={{ marginBottom: '2rem' }}>
+                          {/* Заголовок дня */}
+                          <div style={{
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            color: 'white',
+                            padding: '0.75rem 1rem',
+                            borderRadius: '8px',
+                            marginBottom: '1rem',
+                            fontWeight: 'bold',
+                            fontSize: '0.95rem'
+                          }}>
+                            📅 {dateKey}
                           </div>
-                          <div className={`transaction-amount ${tr.type === 'distribution' ? 'positive' : 'negative'}`}>
-                            {tr.type === 'distribution' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
+                          
+                          {/* Транзакции за день (новые сверху) */}
+                          {dayTransactions.sort((a, b) => new Date(b.date) - new Date(a.date)).map(tr => (
+                            <div key={tr.id} className="transaction-item">
+                              <div className="transaction-header">
+                                <div>
+                                  <div className="transaction-type">
+                                    {tr.type === 'distribution' ? '🔄 Распределение' : '💸 Расход'}
+                                  </div>
+                                  <div className="transaction-desc">{tr.description || tr.categoryName}</div>
+                                  <div className="transaction-date">
+                                    {new Date(tr.date).toLocaleTimeString('ru-RU', { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit' 
+                                    })}
+                                  </div>
+                                </div>
+                                <div className={`transaction-amount ${tr.type === 'distribution' ? 'positive' : 'negative'}`}>
+                                  {tr.type === 'distribution' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {/* Итого за день */}
+                          <div style={{
+                            borderTop: '2px solid #e0e0e0',
+                            paddingTop: '0.75rem',
+                            marginTop: '0.75rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            fontWeight: 'bold',
+                            fontSize: '0.95rem'
+                          }}>
+                            <span>Итого за день:</span>
+                            <span style={{ 
+                              color: dayTransactions.reduce((sum, tr) => {
+                                return sum + (tr.type === 'expense' ? -tr.amount : tr.amount);
+                              }, 0) < 0 ? '#f44336' : '#4caf50'
+                            }}>
+                              {dayTransactions.reduce((sum, tr) => {
+                                return sum + (tr.type === 'expense' ? -tr.amount : tr.amount);
+                              }, 0).toLocaleString('de-DE')} €
+                            </span>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                    
-                    {/* Итого за день */}
-                    <div style={{
-                      borderTop: '2px solid #e0e0e0',
-                      paddingTop: '0.75rem',
-                      marginTop: '0.75rem',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontWeight: 'bold',
-                      fontSize: '0.95rem'
-                    }}>
-                      <span>Итого за день:</span>
-                      <span style={{ 
-                        color: dayTransactions.reduce((sum, tr) => {
-                          return sum + (tr.type === 'expense' ? -tr.amount : tr.amount);
-                        }, 0) < 0 ? '#f44336' : '#4caf50'
+                      ))}
+                      
+                      {/* Пагинация */}
+                      {totalPages > 1 && (
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          gap: '1rem',
+                          marginTop: '2rem',
+                          padding: '1rem',
+                          borderTop: '1px solid #e0e0e0'
+                        }}>
+                          <button 
+                            onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                            disabled={historyPage === 1}
+                            className="btn btn-secondary"
+                            style={{ opacity: historyPage === 1 ? 0.5 : 1 }}
+                          >
+                            ← Назад
+                          </button>
+                          <span style={{ fontSize: '0.9rem', color: '#666' }}>
+                            Страница {historyPage} из {totalPages}
+                          </span>
+                          <button 
+                            onClick={() => setHistoryPage(p => Math.min(totalPages, p + 1))}
+                            disabled={historyPage === totalPages}
+                            className="btn btn-secondary"
+                            style={{ opacity: historyPage === totalPages ? 0.5 : 1 }}
+                          >
+                            Вперед →
+                          </button>
+                        </div>
+                      )}
+                      
+                      {/* Информация о количестве */}
+                      <div style={{ 
+                        textAlign: 'center', 
+                        color: '#666', 
+                        fontSize: '0.85rem',
+                        marginTop: '1rem'
                       }}>
-                        {dayTransactions.reduce((sum, tr) => {
-                          return sum + (tr.type === 'expense' ? -tr.amount : tr.amount);
-                        }, 0).toLocaleString('de-DE')} €
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                        Показано {paginatedTransactions.length} из {sortedTransactions.length} транзакций
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
