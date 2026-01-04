@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
-export function useBudgetSync() {
+export function useBudgetSync(userId) {
   const [isLoading, setIsLoading] = useState(true);
   const [monthlyIncome, setMonthlyIncome] = useState('');
   const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
   const [baseExpenses, setBaseExpenses] = useState([]);
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [goals, setGoals] = useState([]);
 
   // Загрузка данных из Supabase при монтировании
   useEffect(() => {
-    loadDataFromSupabase();
+    if (userId) {
+      loadDataFromSupabase();
+    }
     
     // Подписка на изменения в реальном времени
     const setupRealtimeSubscriptions = () => {
@@ -57,7 +60,7 @@ export function useBudgetSync() {
 
     const cleanup = setupRealtimeSubscriptions();
     return cleanup;
-  }, []);
+  }, [userId]);
 
   // Загрузка всех данных
   const loadDataFromSupabase = async () => {
@@ -80,6 +83,7 @@ export function useBudgetSync() {
     const { data, error } = await supabase
       .from('budget_settings')
       .select('*')
+      .eq('user_id', userId)
       .single();
 
     if (data && !error) {
@@ -93,6 +97,7 @@ export function useBudgetSync() {
     const { data, error } = await supabase
       .from('base_expenses')
       .select('*')
+      .eq('user_id', userId)
       .order('sort_order', { ascending: true });
 
     if (data && !error) {
@@ -109,6 +114,7 @@ export function useBudgetSync() {
     const { data, error } = await supabase
       .from('categories')
       .select('*')
+      .eq('user_id', userId)
       .order('sort_order', { ascending: true });
 
     if (data && !error) {
@@ -127,6 +133,7 @@ export function useBudgetSync() {
     const { data, error } = await supabase
       .from('transactions')
       .select('*')
+      .eq('user_id', userId)
       .order('date', { ascending: false });
 
     if (data && !error) {
@@ -148,7 +155,7 @@ export function useBudgetSync() {
     const { data, error } = await supabase
       .from('budget_settings')
       .upsert({
-        id: await getSettingsId(),
+        user_id: userId,
         monthly_income: parseFloat(income) || 0,
         current_month: month,
         updated_at: new Date().toISOString()
@@ -163,26 +170,17 @@ export function useBudgetSync() {
     return { data, error };
   };
 
-  // Получение ID настроек (всегда одна запись)
-  const getSettingsId = async () => {
-    const { data } = await supabase
-      .from('budget_settings')
-      .select('id')
-      .single();
-    return data?.id;
-  };
-
   // Сохранение базовых расходов
   const saveBaseExpenses = async (expenses) => {
-    // Удаляем все старые
-    await supabase.from('base_expenses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // Удаляем все старые этого пользователя
+    await supabase.from('base_expenses').delete().eq('user_id', userId);
     
     // Добавляем новые
     const { error } = await supabase
       .from('base_expenses')
       .insert(
         expenses.map((exp, index) => ({
-          id: exp.id,
+          user_id: userId,
           name: exp.name,
           amount: parseFloat(exp.amount) || 0,
           sort_order: index
@@ -196,15 +194,15 @@ export function useBudgetSync() {
 
   // Сохранение категорий
   const saveCategories = async (cats) => {
-    // Удаляем все старые
-    await supabase.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // Удаляем все старые этого пользователя
+    await supabase.from('categories').delete().eq('user_id', userId);
     
     // Добавляем новые
     const { error } = await supabase
       .from('categories')
       .insert(
         cats.map((cat, index) => ({
-          id: cat.id,
+          user_id: userId,
           name: cat.name,
           percent: cat.percent || 0,
           balance: cat.balance || 0,
@@ -223,6 +221,7 @@ export function useBudgetSync() {
     const { error } = await supabase
       .from('transactions')
       .insert({
+        user_id: userId,
         type: transaction.type,
         date: transaction.date,
         month: transaction.month,
@@ -244,11 +243,13 @@ export function useBudgetSync() {
     baseExpenses,
     categories,
     transactions,
+    goals,
     setMonthlyIncome: (income) => saveSettings(income, currentMonth),
     setCurrentMonth: (month) => saveSettings(monthlyIncome, month),
     setBaseExpenses: saveBaseExpenses,
     setCategories: saveCategories,
     setTransactions: (newTransactions) => setTransactions(newTransactions),
+    setGoals: (newGoals) => setGoals(newGoals),
     addTransaction
   };
 }

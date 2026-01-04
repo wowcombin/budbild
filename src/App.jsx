@@ -1,70 +1,67 @@
 import { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import { useSupabaseSync } from './useSupabaseSync';
 import './App.css';
 
 function App({ onLogout, currentUser }) {
-  // Состояние для базовых настроек
-  const [monthlyIncome, setMonthlyIncome] = useState('');
-  const [baseExpenses, setBaseExpenses] = useState([
-    { id: 1, name: 'Аренда', amount: '' },
-    { id: 2, name: 'Коммуналка', amount: '' },
-    { id: 3, name: 'Страховки', amount: '' },
-    { id: 4, name: 'Еда (базовая)', amount: '' },
-  ]);
-
-  // Категории с процентами
-  const [categories, setCategories] = useState([
-    { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true },
-    { id: 2, name: 'Путешествия', percent: 20, balance: 0, carryOver: true },
-    { id: 3, name: 'Одежда', percent: 15, balance: 0, carryOver: false },
-    { id: 4, name: 'Развлечения', percent: 15, balance: 0, carryOver: false },
-  ]);
-
-  // История транзакций
-  const [transactions, setTransactions] = useState([]);
-  
-  // Активный месяц
-  const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().slice(0, 7));
+  // Все данные в одном объекте для синхронизации
+  const [data, setData] = useState({
+    monthlyIncome: '',
+    currentMonth: new Date().toISOString().slice(0, 7),
+    baseExpenses: [
+      { id: 1, name: 'Аренда', amount: '' },
+      { id: 2, name: 'Коммуналка', amount: '' },
+      { id: 3, name: 'Страховки', amount: '' },
+      { id: 4, name: 'Еда (базовая)', amount: '' },
+    ],
+    categories: [
+      { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true },
+      { id: 2, name: 'Путешествия', percent: 20, balance: 0, carryOver: true },
+      { id: 3, name: 'Одежда', percent: 15, balance: 0, carryOver: false },
+      { id: 4, name: 'Развлечения', percent: 15, balance: 0, carryOver: false },
+    ],
+    transactions: [],
+    goals: []
+  });
   
   // UI состояния
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
   
-  // Цели
-  const [goals, setGoals] = useState([]);
+  // Подключаем синхронизацию с Supabase
+  const { saveToSupabase, addTransactionToSupabase } = useSupabaseSync(currentUser.id, data, setData);
+  
+  // Удобные геттеры
+  const monthlyIncome = data.monthlyIncome;
+  const currentMonth = data.currentMonth;
+  const baseExpenses = data.baseExpenses;
+  const categories = data.categories;
+  const transactions = data.transactions;
+  const goals = data.goals;
+  
+  // Удобные сеттеры
+  const setMonthlyIncome = (value) => setData({...data, monthlyIncome: value});
+  const setCurrentMonth = (value) => setData({...data, currentMonth: value});
+  const setBaseExpenses = (value) => setData({...data, baseExpenses: value});
+  const setCategories = (value) => setData({...data, categories: value});
+  const setTransactions = (value) => setData({...data, transactions: value});
+  const setGoals = (value) => setData({...data, goals: value});
 
-  // Загрузка данных из localStorage для текущего пользователя
+  // Сохранение в Supabase при изменении данных
   useEffect(() => {
-    const storageKey = `budgetData_${currentUser.id}`;
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      const data = JSON.parse(saved);
-      if (data.monthlyIncome) setMonthlyIncome(data.monthlyIncome);
-      if (data.baseExpenses) setBaseExpenses(data.baseExpenses);
-      if (data.categories) setCategories(data.categories);
-      if (data.transactions) setTransactions(data.transactions);
-      if (data.currentMonth) setCurrentMonth(data.currentMonth);
-      if (data.goals) setGoals(data.goals);
-    }
-  }, [currentUser.id]);
-
-  // Сохранение в localStorage для текущего пользователя
-  useEffect(() => {
-    const storageKey = `budgetData_${currentUser.id}`;
-    localStorage.setItem(storageKey, JSON.stringify({
-      monthlyIncome,
-      baseExpenses,
-      categories,
-      transactions,
-      currentMonth,
-      goals
-    }));
-  }, [monthlyIncome, baseExpenses, categories, transactions, currentMonth, goals, currentUser.id]);
+    const timer = setTimeout(() => {
+      saveToSupabase();
+    }, 1000); // Дебаунс 1 секунда
+    
+    return () => clearTimeout(timer);
+  }, [data, saveToSupabase]);
 
   // Расчеты
   const totalBaseExpenses = baseExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
   const remainingAfterBase = (parseFloat(monthlyIncome) || 0) - totalBaseExpenses;
+  
+  // Общее накопление - сумма всех положительных балансов в категориях
+  const totalSavings = categories.reduce((sum, cat) => sum + Math.max(0, cat.balance), 0);
   
   // Распределение по категориям (первые 50% идут в бизнес, остальные 50% распределяются)
   const businessAmount = remainingAfterBase * 0.5;
@@ -111,7 +108,7 @@ function App({ onLogout, currentUser }) {
   };
 
   // Распределение бюджета
-  const distributeBudget = () => {
+  const distributeBudget = async () => {
     if (remainingAfterBase <= 0) {
       alert('Доход должен быть больше базовых расходов!');
       return;
@@ -135,14 +132,14 @@ function App({ onLogout, currentUser }) {
 
     setCategories(newCategories);
     
-    setTransactions([...transactions, {
-      id: Date.now(),
+    // Добавляем транзакцию о распределении через Supabase
+    await addTransactionToSupabase({
       type: 'distribution',
       date: new Date().toISOString(),
       month: currentMonth,
       amount: remainingAfterBase,
       description: `Распределение бюджета за ${currentMonth}`
-    }]);
+    });
 
     // Показываем информацию о дефицитах
     const deficits = newCategories.filter(cat => cat.balance < 0);
@@ -157,21 +154,22 @@ function App({ onLogout, currentUser }) {
   };
 
   // Добавление расхода
-  const addTransaction = (categoryId, amount, description) => {
+  const addTransaction = async (categoryId, amount, description) => {
     const numAmount = parseFloat(amount);
     const category = categories.find(c => c.id === categoryId);
     
     if (!category) return;
 
     // Обновляем баланс категории (может уйти в минус - дефицит)
-    setCategories(categories.map(cat => 
+    const newCategories = categories.map(cat => 
       cat.id === categoryId 
         ? { ...cat, balance: cat.balance - numAmount }
         : cat
-    ));
+    );
+    setCategories(newCategories);
 
-    setTransactions([...transactions, {
-      id: Date.now(),
+    // Добавляем транзакцию через Supabase
+    const transaction = {
       type: 'expense',
       date: new Date().toISOString(),
       month: currentMonth,
@@ -179,8 +177,9 @@ function App({ onLogout, currentUser }) {
       categoryName: category.name,
       amount: numAmount,
       description
-    }]);
+    };
 
+    await addTransactionToSupabase(transaction);
     setShowAddExpense(false);
   };
 
@@ -319,7 +318,7 @@ function App({ onLogout, currentUser }) {
         {activeTab === 'dashboard' && (
           <div>
             {/* Summary Cards */}
-            <div className="grid">
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
               <div className="stat-card">
                 <h3>Доход за месяц</h3>
                 <div className="amount income">
@@ -336,6 +335,12 @@ function App({ onLogout, currentUser }) {
                 <h3>Остаток для распределения</h3>
                 <div className="amount balance">
                   {remainingAfterBase.toLocaleString('de-DE')} €
+                </div>
+              </div>
+              <div className="stat-card" style={{ background: 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)', color: 'white' }}>
+                <h3 style={{ color: 'rgba(255,255,255,0.9)' }}>💰 Общее накопление</h3>
+                <div className="amount" style={{ color: 'white' }}>
+                  {totalSavings.toLocaleString('de-DE')} €
                 </div>
               </div>
             </div>

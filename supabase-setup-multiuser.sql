@@ -52,10 +52,24 @@ CREATE TABLE IF NOT EXISTS transactions (
   type TEXT NOT NULL, -- 'distribution' или 'expense'
   date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   month TEXT NOT NULL,
-  category_id UUID REFERENCES categories(id) ON DELETE CASCADE,
+  category_id UUID,
   category_name TEXT,
   amount DECIMAL(10, 2) NOT NULL,
   description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. Таблица для целей
+CREATE TABLE IF NOT EXISTS goals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  icon TEXT DEFAULT '🎯',
+  category_id TEXT NOT NULL,
+  target_amount DECIMAL(10, 2) NOT NULL,
+  target_date DATE NOT NULL,
+  start_balance DECIMAL(10, 2) DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -66,6 +80,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE budget_settings;
 ALTER PUBLICATION supabase_realtime ADD TABLE base_expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE transactions;
+ALTER PUBLICATION supabase_realtime ADD TABLE goals;
 
 -- ============================================
 -- ПОЛИТИКИ БЕЗОПАСНОСТИ (Row Level Security)
@@ -77,12 +92,14 @@ ALTER TABLE budget_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE base_expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
 
 -- Удаляем старые политики если есть
 DROP POLICY IF EXISTS "Allow all for budget_settings" ON budget_settings;
 DROP POLICY IF EXISTS "Allow all for base_expenses" ON base_expenses;
 DROP POLICY IF EXISTS "Allow all for categories" ON categories;
 DROP POLICY IF EXISTS "Allow all for transactions" ON transactions;
+DROP POLICY IF EXISTS "Enable all for goals" ON goals;
 
 -- Создаем новые политики (разрешаем доступ к своим данным)
 -- Для простоты используем разрешение всем (так как аутентификация на клиенте)
@@ -90,6 +107,7 @@ CREATE POLICY "Enable all for budget_settings" ON budget_settings FOR ALL USING 
 CREATE POLICY "Enable all for base_expenses" ON base_expenses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all for categories" ON categories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all for transactions" ON transactions FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all for goals" ON goals FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================
 -- ВСТАВЛЯЕМ НАЧАЛЬНЫЕ ДАННЫЕ ДЛЯ ПОЛЬЗОВАТЕЛЯ 1
