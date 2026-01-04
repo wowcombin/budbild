@@ -57,16 +57,32 @@ function App({ onLogout, currentUser }) {
   const totalBaseExpenses = baseExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
   const remainingAfterBase = (parseFloat(monthlyIncome) || 0) - totalBaseExpenses;
   
-  // Общее накопление - сумма всех положительных балансов в категориях
-  const totalSavings = categories.reduce((sum, cat) => sum + Math.max(0, cat.balance), 0);
+  // Расчет расходов за текущий месяц по категориям
+  const getSpentThisMonth = (categoryId) => {
+    return transactions
+      .filter(t => t.type === 'expense' && t.month === currentMonth && t.categoryId === categoryId)
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+  };
+
+  // Расчет суммы для категории по её проценту (от зарплаты)
+  const getAmountForCategory = (cat) => {
+    return remainingAfterBase * ((cat.percent || 0) / 100);
+  };
+
+  // Расчет доступного баланса категории:
+  // Начальный баланс + распределение от зарплаты - расходы за месяц
+  const getAvailableBalance = (cat) => {
+    const initialBalance = cat.balance || 0; // Начальные накопления
+    const allocated = getAmountForCategory(cat); // От зарплаты
+    const spent = getSpentThisMonth(cat.id); // Потрачено
+    return initialBalance + allocated - spent;
+  };
+
+  // Общее накопление - сумма всех доступных балансов
+  const totalSavings = categories.reduce((sum, cat) => sum + Math.max(0, getAvailableBalance(cat)), 0);
   
   // Сумма всех процентов (для проверки)
   const totalPercent = categories.reduce((sum, cat) => sum + (cat.percent || 0), 0);
-  
-  // Расчет суммы для категории по её проценту
-  const getAmountForCategory = (cat) => {
-    return remainingAfterBase * (cat.percent / 100);
-  };
 
   // Добавление базового расхода
   const addBaseExpense = () => {
@@ -109,54 +125,8 @@ function App({ onLogout, currentUser }) {
   };
 
   // Распределение бюджета
-  const distributeBudget = async () => {
-    if (remainingAfterBase <= 0) {
-      alert('Доход должен быть больше базовых расходов!');
-      return;
-    }
-
-    // После распределения доход обнуляется - защита от двойного распределения
-
-    const newCategories = categories.map((cat) => {
-      // Каждая категория получает свой процент от остатка
-      const allocated = getAmountForCategory(cat);
-      
-      // Распределение ДОБАВЛЯЕТ к существующему балансу
-      // Это позволяет сохранять начальные накопления
-      // Например: было 124000€, распределили 10% от 17000€ = 1700€, итого 125700€
-      return {
-        ...cat,
-        balance: (cat.balance || 0) + allocated
-      };
-    });
-
-    setCategories(newCategories);
-    
-    // ОБНУЛЯЕМ ДОХОД после распределения - чтобы нельзя было распределить дважды
-    setMonthlyIncome('');
-    
-    // Записываем доход в историю
-    await addTransactionToSupabase({
-      type: 'income',
-      date: new Date().toISOString(),
-      month: currentMonth,
-      amount: parseFloat(monthlyIncome) || 0,
-      description: `Доход за ${currentMonth} (распределено)`
-    });
-    
-    alert(`✅ Распределено ${remainingAfterBase.toLocaleString('de-DE')} € по категориям!\n\nДоход записан в историю.`);
-
-    // Показываем информацию о дефицитах
-    const deficits = newCategories.filter(cat => cat.balance < 0);
-    if (deficits.length > 0) {
-      const deficitInfo = deficits.map(cat => 
-        `${cat.name}: ${cat.balance.toLocaleString('de-DE')} €`
-      ).join('\n');
-      alert(`Бюджет распределен!\n\n⚠️ Категории с дефицитом:\n${deficitInfo}`);
-    } else {
-      alert('Бюджет успешно распределен!');
-    }
-  };
+  // Распределение теперь автоматическое - не нужна отдельная кнопка
+  // Балансы рассчитываются: начальные накопления + % от зарплаты - расходы
 
   // Добавление расхода
   const addTransaction = async (categoryId, amount, description) => {
@@ -165,15 +135,10 @@ function App({ onLogout, currentUser }) {
     
     if (!category) return;
 
-    // Обновляем баланс категории (может уйти в минус - дефицит)
-    const newCategories = categories.map(cat => 
-      cat.id === categoryId 
-        ? { ...cat, balance: cat.balance - numAmount }
-        : cat
-    );
-    setCategories(newCategories);
+    // Баланс рассчитывается АВТОМАТИЧЕСКИ из транзакций
+    // НЕ нужно менять cat.balance напрямую
 
-    // Добавляем транзакцию через Supabase
+    // Добавляем транзакцию
     const transaction = {
       type: 'expense',
       date: new Date().toISOString(),
@@ -223,11 +188,14 @@ function App({ onLogout, currentUser }) {
 
   // Добавление цели
   const addGoal = (goalData) => {
+    const category = categories.find(c => c.id === parseInt(goalData.categoryId));
+    const currentAvailable = category ? getAvailableBalance(category) : 0;
+    
     const newGoal = {
       id: Date.now(),
       ...goalData,
       createdAt: new Date().toISOString(),
-      startBalance: categories.find(c => c.id === parseInt(goalData.categoryId))?.balance || 0
+      startBalance: currentAvailable // Запоминаем текущий доступный баланс
     };
     setGoals([...goals, newGoal]);
     setShowAddGoal(false);
@@ -242,21 +210,22 @@ function App({ onLogout, currentUser }) {
 
   // Расчет прогресса цели
   const calculateGoalProgress = (goal) => {
-    if (!goal) return { progress: 0, remaining: 0, percent: 0, daysLeft: 0, weeksLeft: 0 };
+    if (!goal) return { progress: 0, remaining: 0, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0 };
     
     const targetAmount = goal.targetAmount || 0;
     const category = categories.find(c => c.id === parseInt(goal.categoryId));
-    if (!category) return { progress: 0, remaining: targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0 };
+    if (!category) return { progress: 0, remaining: targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0 };
 
-    const currentBalance = category.balance || 0;
+    // Используем доступный баланс (накопления + от зарплаты - расходы)
+    const currentBalance = getAvailableBalance(category);
     const startBalance = goal.startBalance || 0;
-    const progress = currentBalance - startBalance;
-    const remaining = targetAmount - progress;
+    const progress = Math.max(0, currentBalance - startBalance);
+    const remaining = Math.max(0, targetAmount - progress);
     const percent = targetAmount > 0 ? Math.min((progress / targetAmount) * 100, 100) : 0;
 
     const targetDate = new Date(goal.targetDate);
     const today = new Date();
-    const daysLeft = Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24));
+    const daysLeft = Math.max(0, Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)));
     const weeksLeft = Math.ceil(daysLeft / 7);
 
     return { progress, remaining, percent, daysLeft, weeksLeft, currentBalance };
@@ -371,12 +340,22 @@ function App({ onLogout, currentUser }) {
               </div>
             </div>
 
-            {/* Distribute Button */}
-            <div className="card">
-              <button onClick={distributeBudget} className="btn btn-primary btn-full">
-                🔄 Распределить бюджет
-              </button>
-            </div>
+            {/* Информация о распределении (автоматический расчет) */}
+            {remainingAfterBase > 0 && (
+              <div className="card" style={{ background: 'linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%)', border: '2px solid #4caf50' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.9rem', color: '#2e7d32', marginBottom: '0.5rem' }}>
+                    💡 Доступно для распределения по категориям
+                  </div>
+                  <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1b5e20' }}>
+                    {remainingAfterBase.toLocaleString('de-DE')} €
+                  </div>
+                  <div style={{ fontSize: '0.85rem', color: '#388e3c', marginTop: '0.5rem' }}>
+                    Расходы автоматически отнимаются от баланса категорий
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Categories */}
             <div className="card">
@@ -393,30 +372,29 @@ function App({ onLogout, currentUser }) {
               </div>
               <div>
                 {categories.map((cat, index) => {
-                  // Расчет ожидаемой суммы при распределении
-                  const expectedAmount = getAmountForCategory(cat);
+                  const allocated = getAmountForCategory(cat);
+                  const spent = getSpentThisMonth(cat.id);
+                  const available = getAvailableBalance(cat);
                   
                   return (
                     <div key={cat.id} className="category-item">
                       <div className="category-header">
                         <div className="category-info">
-                          <h3>{cat.name}</h3>
-                          <p style={{ fontSize: '0.875rem', color: '#666' }}>
-                            {cat.carryOver ? '♻️ Переносится на следующий месяц' : '📅 Сбрасывается каждый месяц'}
-                          </p>
-                          {/* Показываем ожидаемую сумму при распределении */}
-                          <p style={{ fontSize: '0.875rem', color: '#4caf50' }}>
-                            📊 При распределении: +{expectedAmount.toLocaleString('de-DE')} €
-                          </p>
-                          {cat.balance < 0 && (
-                            <p style={{ fontSize: '0.875rem', color: '#f44336', fontWeight: 'bold' }}>
-                              ⚠️ Дефицит - будет покрыт в следующем месяце
+                          <h3>{cat.name} {cat.isSavings && '💰'}</h3>
+                          <div style={{ fontSize: '0.8rem', color: '#666', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                            <span>💵 Накопления: {(cat.balance || 0).toLocaleString('de-DE')}€</span>
+                            <span style={{ color: '#4caf50' }}>➕ От зарплаты: {allocated.toLocaleString('de-DE')}€</span>
+                            {spent > 0 && <span style={{ color: '#f44336' }}>➖ Потрачено: {spent.toLocaleString('de-DE')}€</span>}
+                          </div>
+                          {available < 0 && (
+                            <p style={{ fontSize: '0.875rem', color: '#f44336', fontWeight: 'bold', marginTop: '0.25rem' }}>
+                              ⚠️ Дефицит!
                             </p>
                           )}
                         </div>
                         <div className="category-balance">
-                          <div className="amount" style={{ color: cat.balance < 0 ? '#f44336' : '#5c6bc0' }}>
-                            {cat.balance.toLocaleString('de-DE')} €
+                          <div className="amount" style={{ color: available < 0 ? '#f44336' : '#5c6bc0', fontSize: '1.3rem' }}>
+                            {available.toLocaleString('de-DE')} €
                           </div>
                           <div className="percent">{cat.percent}%</div>
                         </div>
@@ -425,8 +403,8 @@ function App({ onLogout, currentUser }) {
                         <div
                           className="progress-fill"
                           style={{ 
-                            width: `${Math.min(Math.max((cat.balance / expectedAmount) * 100, 0), 100)}%`,
-                            backgroundColor: cat.balance < 0 ? '#f44336' : '#5c6bc0'
+                            width: `${Math.min(Math.max((available / ((cat.balance || 0) + allocated)) * 100, 0), 100)}%`,
+                            backgroundColor: available < 0 ? '#f44336' : '#5c6bc0'
                           }}
                         ></div>
                       </div>
@@ -879,11 +857,14 @@ function App({ onLogout, currentUser }) {
                   <select name="category" required className="input">
                     {categories
                       .filter(cat => !cat.isSavings && cat.name !== 'Новый бизнес' && cat.name !== 'На черный день') // Исключаем накопительные категории
-                      .map(cat => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name} ({cat.balance.toLocaleString('de-DE')} €{cat.balance < 0 ? ' - ДЕФИЦИТ' : ''})
-                        </option>
-                      ))}
+                      .map(cat => {
+                        const available = getAvailableBalance(cat);
+                        return (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name} ({available.toLocaleString('de-DE')} €{available < 0 ? ' - ДЕФИЦИТ' : ''})
+                          </option>
+                        );
+                      })}
                   </select>
               </div>
               <div className="form-group">

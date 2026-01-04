@@ -72,7 +72,16 @@ export function useSupabaseSync(userId, data, setData) {
               amount: t.amount || 0,
               description: t.description
             })) : [],
-            goals: []
+            // Загружаем goals из localStorage (не из Supabase)
+            goals: (() => {
+              try {
+                const goalsKey = `budgetGoals_${userId}`;
+                const savedGoals = localStorage.getItem(goalsKey);
+                return savedGoals ? JSON.parse(savedGoals) : [];
+              } catch {
+                return [];
+              }
+            })()
           });
         } else {
           // Если в Supabase пусто - загружаем из localStorage
@@ -120,6 +129,10 @@ export function useSupabaseSync(userId, data, setData) {
       // Сохраняем в localStorage
       const storageKey = `budgetData_${userId}`;
       localStorage.setItem(storageKey, JSON.stringify(data));
+      
+      // Сохраняем goals отдельно
+      const goalsKey = `budgetGoals_${userId}`;
+      localStorage.setItem(goalsKey, JSON.stringify(data.goals || []));
 
       // Сохраняем в Supabase
       try {
