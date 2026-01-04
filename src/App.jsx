@@ -115,13 +115,7 @@ function App({ onLogout, currentUser }) {
       return;
     }
 
-    // Предупреждение о повторном распределении
-    const confirmed = window.confirm(
-      `Распределить ${remainingAfterBase.toLocaleString('de-DE')} € по категориям?\n\n` +
-      `Суммы будут ДОБАВЛЕНЫ к текущим балансам.\n` +
-      `Нажмите OK для подтверждения.`
-    );
-    if (!confirmed) return;
+    // После распределения доход обнуляется - защита от двойного распределения
 
     const newCategories = categories.map((cat) => {
       // Каждая категория получает свой процент от остатка
@@ -138,7 +132,19 @@ function App({ onLogout, currentUser }) {
 
     setCategories(newCategories);
     
-    // Распределение НЕ записывается в историю транзакций
+    // ОБНУЛЯЕМ ДОХОД после распределения - чтобы нельзя было распределить дважды
+    setMonthlyIncome('');
+    
+    // Записываем доход в историю
+    await addTransactionToSupabase({
+      type: 'income',
+      date: new Date().toISOString(),
+      month: currentMonth,
+      amount: parseFloat(monthlyIncome) || 0,
+      description: `Доход за ${currentMonth} (распределено)`
+    });
+    
+    alert(`✅ Распределено ${remainingAfterBase.toLocaleString('de-DE')} € по категориям!\n\nДоход записан в историю.`);
 
     // Показываем информацию о дефицитах
     const deficits = newCategories.filter(cat => cat.balance < 0);
