@@ -39,13 +39,13 @@ function App({ onLogout, currentUser }) {
   const transactions = data.transactions;
   const goals = data.goals;
   
-  // Удобные сеттеры
-  const setMonthlyIncome = (value) => setData({...data, monthlyIncome: value});
-  const setCurrentMonth = (value) => setData({...data, currentMonth: value});
-  const setBaseExpenses = (value) => setData({...data, baseExpenses: value});
-  const setCategories = (value) => setData({...data, categories: value});
-  const setTransactions = (value) => setData({...data, transactions: value});
-  const setGoals = (value) => setData({...data, goals: value});
+  // Удобные сеттеры (используем функциональную форму!)
+  const setMonthlyIncome = (value) => setData(prev => ({...prev, monthlyIncome: value}));
+  const setCurrentMonth = (value) => setData(prev => ({...prev, currentMonth: value}));
+  const setBaseExpenses = (value) => setData(prev => ({...prev, baseExpenses: value}));
+  const setCategories = (value) => setData(prev => ({...prev, categories: value}));
+  const setTransactions = (value) => setData(prev => ({...prev, transactions: value}));
+  const setGoals = (value) => setData(prev => ({...prev, goals: value}));
 
   // Сохранение в Supabase при изменении данных
   useEffect(() => {
