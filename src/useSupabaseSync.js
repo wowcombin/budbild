@@ -1,66 +1,167 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from './supabaseClient';
 
-// Простой и надежный хук для синхронизации
+// Хук для синхронизации с Supabase
 export function useSupabaseSync(userId, data, setData) {
   const initialized = useRef(false);
   const saveTimeout = useRef(null);
+  const isLoading = useRef(false);
 
-  // Загрузка данных ОДИН РАЗ при монтировании
+  // Загрузка данных при монтировании
   useEffect(() => {
     if (!userId || initialized.current) return;
     initialized.current = true;
+    isLoading.current = true;
 
-    // Загружаем из localStorage
-    const storageKey = `budgetData_${userId}`;
-    const saved = localStorage.getItem(storageKey);
-    
-    if (saved) {
+    const loadData = async () => {
+      console.log('🔄 Загрузка данных для пользователя:', userId);
+      
       try {
-        const parsed = JSON.parse(saved);
-        setData({
-          monthlyIncome: parsed.monthlyIncome || '',
-          currentMonth: parsed.currentMonth || new Date().toISOString().slice(0, 7),
-          baseExpenses: parsed.baseExpenses || [
-            { id: 1, name: 'Аренда', amount: '' },
-            { id: 2, name: 'Коммуналка', amount: '' },
-            { id: 3, name: 'Страховки', amount: '' },
-            { id: 4, name: 'Еда (базовая)', amount: '' },
-          ],
-          categories: parsed.categories || [
-            { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true },
-            { id: 2, name: 'Путешествия', percent: 20, balance: 0, carryOver: true },
-            { id: 3, name: 'Одежда', percent: 15, balance: 0, carryOver: false },
-            { id: 4, name: 'Развлечения', percent: 15, balance: 0, carryOver: false },
-          ],
-          transactions: parsed.transactions || [],
-          goals: parsed.goals || []
-        });
-        console.log('📱 Данные загружены из localStorage');
-      } catch (e) {
-        console.error('Ошибка чтения localStorage:', e);
+        // Пробуем загрузить из Supabase
+        const [settingsRes, expensesRes, catsRes, transRes] = await Promise.all([
+          supabase.from('budget_settings').select('*').eq('user_id', userId).maybeSingle(),
+          supabase.from('base_expenses').select('*').eq('user_id', userId).order('sort_order'),
+          supabase.from('categories').select('*').eq('user_id', userId).order('sort_order'),
+          supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false })
+        ]);
+
+        const settings = settingsRes.data;
+        const expenses = expensesRes.data;
+        const cats = catsRes.data;
+        const trans = transRes.data;
+
+        // Проверяем есть ли данные в Supabase
+        const hasSupabaseData = settings || (expenses && expenses.length > 0) || (cats && cats.length > 0);
+
+        if (hasSupabaseData) {
+          console.log('✅ Данные загружены из Supabase');
+          setData({
+            monthlyIncome: settings?.monthly_income?.toString() || '',
+            currentMonth: settings?.current_month || new Date().toISOString().slice(0, 7),
+            baseExpenses: expenses && expenses.length > 0 ? expenses.map(e => ({
+              id: e.id,
+              name: e.name,
+              amount: e.amount?.toString() || ''
+            })) : [
+              { id: 1, name: 'Аренда', amount: '' },
+              { id: 2, name: 'Коммуналка', amount: '' },
+              { id: 3, name: 'Страховки', amount: '' },
+              { id: 4, name: 'Еда (базовая)', amount: '' },
+            ],
+            categories: cats && cats.length > 0 ? cats.map(c => ({
+              id: c.id,
+              name: c.name,
+              percent: c.percent || 0,
+              balance: c.balance || 0,
+              carryOver: c.carry_over || false
+            })) : [
+              { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true },
+              { id: 2, name: 'Путешествия', percent: 20, balance: 0, carryOver: true },
+              { id: 3, name: 'Одежда', percent: 15, balance: 0, carryOver: false },
+              { id: 4, name: 'Развлечения', percent: 15, balance: 0, carryOver: false },
+            ],
+            transactions: trans ? trans.map(t => ({
+              id: t.id,
+              type: t.type,
+              date: t.date,
+              month: t.month,
+              categoryId: t.category_id,
+              categoryName: t.category_name,
+              amount: t.amount || 0,
+              description: t.description
+            })) : [],
+            goals: []
+          });
+        } else {
+          // Если в Supabase пусто - загружаем из localStorage
+          console.log('📱 Supabase пуст, загружаем из localStorage');
+          const storageKey = `budgetData_${userId}`;
+          const saved = localStorage.getItem(storageKey);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            setData(parsed);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Ошибка загрузки из Supabase:', error);
+        // Fallback на localStorage
+        const storageKey = `budgetData_${userId}`;
+        const saved = localStorage.getItem(storageKey);
+        if (saved) {
+          setData(JSON.parse(saved));
+        }
       }
-    }
+      
+      isLoading.current = false;
+    };
+
+    loadData();
   }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Сохранение в localStorage при каждом изменении data
+  // Сохранение данных при изменении
   useEffect(() => {
-    if (!userId || !initialized.current) return;
+    if (!userId || !initialized.current || isLoading.current) return;
+    
+    // Пропускаем начальные данные
+    if (!data.monthlyIncome && data.categories.every(c => c.balance === 0)) {
+      return;
+    }
 
-    // Дебаунс - ждем 500ms перед сохранением
+    // Дебаунс
     if (saveTimeout.current) {
       clearTimeout(saveTimeout.current);
     }
 
-    saveTimeout.current = setTimeout(() => {
+    saveTimeout.current = setTimeout(async () => {
+      console.log('💾 Сохранение данных...');
+      
+      // Сохраняем в localStorage
       const storageKey = `budgetData_${userId}`;
+      localStorage.setItem(storageKey, JSON.stringify(data));
+
+      // Сохраняем в Supabase
       try {
-        localStorage.setItem(storageKey, JSON.stringify(data));
-        console.log('💾 Данные сохранены в localStorage');
-      } catch (e) {
-        console.error('Ошибка сохранения в localStorage:', e);
+        // Настройки бюджета
+        await supabase.from('budget_settings').upsert({
+          user_id: userId,
+          monthly_income: parseFloat(data.monthlyIncome) || 0,
+          current_month: data.currentMonth,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+        // Базовые расходы - удаляем старые и добавляем новые
+        await supabase.from('base_expenses').delete().eq('user_id', userId);
+        if (data.baseExpenses && data.baseExpenses.length > 0) {
+          await supabase.from('base_expenses').insert(
+            data.baseExpenses.map((exp, index) => ({
+              user_id: userId,
+              name: exp.name,
+              amount: parseFloat(exp.amount) || 0,
+              sort_order: index
+            }))
+          );
+        }
+
+        // Категории - удаляем старые и добавляем новые
+        await supabase.from('categories').delete().eq('user_id', userId);
+        if (data.categories && data.categories.length > 0) {
+          await supabase.from('categories').insert(
+            data.categories.map((cat, index) => ({
+              user_id: userId,
+              name: cat.name,
+              percent: cat.percent || 0,
+              balance: cat.balance || 0,
+              carry_over: cat.carryOver || false,
+              sort_order: index
+            }))
+          );
+        }
+
+        console.log('✅ Данные сохранены в Supabase');
+      } catch (error) {
+        console.error('❌ Ошибка сохранения в Supabase:', error);
       }
-    }, 500);
+    }, 1000);
 
     return () => {
       if (saveTimeout.current) {
@@ -69,21 +170,36 @@ export function useSupabaseSync(userId, data, setData) {
     };
   }, [userId, data]);
 
-  // Пустые функции-заглушки (Supabase пока отключен)
-  const saveToSupabase = async () => {
-    // Ничего не делаем - все сохраняется в localStorage
-  };
+  // Добавление транзакции
+  const addTransactionToSupabase = useCallback(async (transaction) => {
+    const newTransaction = {
+      id: Date.now(),
+      ...transaction
+    };
 
-  const addTransactionToSupabase = async (transaction) => {
-    // Просто добавляем транзакцию в локальное состояние
+    // Добавляем в локальное состояние
     setData(prev => ({
       ...prev,
-      transactions: [{
-        id: Date.now(),
-        ...transaction
-      }, ...prev.transactions]
+      transactions: [newTransaction, ...prev.transactions]
     }));
-  };
 
-  return { saveToSupabase, addTransactionToSupabase };
+    // Сохраняем в Supabase
+    try {
+      await supabase.from('transactions').insert({
+        user_id: userId,
+        type: transaction.type,
+        date: transaction.date,
+        month: transaction.month,
+        category_id: transaction.categoryId,
+        category_name: transaction.categoryName,
+        amount: transaction.amount,
+        description: transaction.description
+      });
+      console.log('✅ Транзакция сохранена в Supabase');
+    } catch (error) {
+      console.error('❌ Ошибка сохранения транзакции:', error);
+    }
+  }, [userId, setData]);
+
+  return { addTransactionToSupabase };
 }
