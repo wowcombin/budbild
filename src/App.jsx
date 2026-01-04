@@ -213,7 +213,8 @@ function App({ onLogout, currentUser }) {
 
   // Добавление цели
   const addGoal = (goalData) => {
-    const category = categories.find(c => c.id === parseInt(goalData.categoryId));
+    // Сравниваем ID как строки
+    const category = categories.find(c => String(c.id) === String(goalData.categoryId));
     const currentAvailable = category ? getAvailableBalance(category) : 0;
     
     const newGoal = {
@@ -238,22 +239,26 @@ function App({ onLogout, currentUser }) {
     if (!goal) return { progress: 0, remaining: 0, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0 };
     
     const targetAmount = goal.targetAmount || 0;
-    const category = categories.find(c => c.id === parseInt(goal.categoryId));
-    if (!category) return { progress: 0, remaining: targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0 };
+    // Сравниваем ID как строки
+    const category = categories.find(c => String(c.id) === String(goal.categoryId));
+    if (!category) return { progress: 0, remaining: targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0, currentBalance: 0, monthlyAmount: 0 };
 
     // Используем доступный баланс (накопления + от зарплаты - расходы)
     const currentBalance = getAvailableBalance(category);
+    const monthlyAmount = getAmountForCategory(category);
     const startBalance = goal.startBalance || 0;
-    const progress = Math.max(0, currentBalance - startBalance);
-    const remaining = Math.max(0, targetAmount - progress);
-    const percent = targetAmount > 0 ? Math.min((progress / targetAmount) * 100, 100) : 0;
+    const progressAmount = Math.max(0, currentBalance - startBalance);
+    const remaining = Math.max(0, targetAmount - progressAmount);
+    const percent = targetAmount > 0 ? Math.min((progressAmount / targetAmount) * 100, 100) : 0;
 
     const targetDate = new Date(goal.targetDate);
     const today = new Date();
     const daysLeft = Math.max(0, Math.ceil((targetDate - today) / (1000 * 60 * 60 * 24)));
-    const weeksLeft = Math.ceil(daysLeft / 7);
+    
+    // Расчет дней до цели на основе ежемесячного накопления
+    const daysToGoal = monthlyAmount > 0 ? Math.ceil((remaining / monthlyAmount) * 30) : Infinity;
 
-    return { progress, remaining, percent, daysLeft, weeksLeft, currentBalance };
+    return { progress: progressAmount, remaining, percent, daysLeft, daysToGoal, currentBalance, monthlyAmount };
   };
 
   // Мотивационное сообщение
@@ -604,7 +609,9 @@ function App({ onLogout, currentUser }) {
                       progress: rawProgress?.progress || 0
                     };
                     const motivation = getMotivationalMessage(progress.percent);
-                    const category = categories.find(c => c.id === parseInt(goal.categoryId));
+                    // Сравниваем ID как строки (могут быть UUID или числа)
+                    const category = categories.find(c => String(c.id) === String(goal.categoryId));
+                    const monthlyAmount = category ? getAmountForCategory(category) : 0;
                     
                     return (
                       <div key={goal.id} style={{
@@ -677,15 +684,15 @@ function App({ onLogout, currentUser }) {
                           marginBottom: '1rem'
                         }}>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>💰 Сейчас</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>💰 Сейчас (накоп. + зарплата)</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: motivation.color }}>
                               {progress.currentBalance.toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📈 +В месяц</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📈 В месяц (от зарплаты)</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4caf50' }}>
-                              +{(category ? getAmountForCategory(category) : 0).toLocaleString('de-DE')} €
+                              +{monthlyAmount.toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
@@ -695,20 +702,17 @@ function App({ onLogout, currentUser }) {
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>⏳ Осталось</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>⏳ Осталось накопить</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: progress.remaining > 0 ? '#f44336' : '#4caf50' }}>
                               {Math.max(0, progress.remaining).toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
-                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📅 Месяцев до цели</div>
+                            <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📅 Дней до цели</div>
                             <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
-                              {(() => {
-                                const monthlyAdd = category ? getAmountForCategory(category) : 0;
-                                if (monthlyAdd <= 0) return '∞';
-                                const monthsNeeded = Math.ceil(progress.remaining / monthlyAdd);
-                                return monthsNeeded <= 0 ? '✅ Готово!' : `~${monthsNeeded} мес`;
-                              })()}
+                              {progress.remaining <= 0 ? '✅ Достигнуто!' : 
+                               progress.daysToGoal === Infinity ? '∞ (введите зарплату)' : 
+                               `~${progress.daysToGoal} дн`}
                             </div>
                           </div>
                         </div>
