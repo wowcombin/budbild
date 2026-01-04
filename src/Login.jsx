@@ -9,8 +9,7 @@ function Login({ onLogin }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (password === APP_PASSWORD) {
-      // Сохраняем в localStorage что пользователь вошел
-      localStorage.setItem('isAuthenticated', 'true');
+      // AuthWrapper сохранит сессию автоматически
       onLogin();
     } else {
       setError('Неверный пароль!');
@@ -51,6 +50,7 @@ function Login({ onLogin }) {
         </form>
         
         <div className="login-footer">
+          <p style={{ color: '#4caf50', fontWeight: 'bold' }}>✅ После входа пароль больше не потребуется</p>
           <p>🔒 Все данные синхронизируются между устройствами</p>
           <p>💶 Используется общий бюджет в евро</p>
         </div>

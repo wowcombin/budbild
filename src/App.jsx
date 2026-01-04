@@ -196,10 +196,10 @@ function App({ onLogout }) {
     <div className="app">
       {/* Header */}
       <header className="header">
-        <div>
+      <div>
           <h1>💰 Планировщик Бюджета</h1>
-          <p>Месяц: {currentMonth}</p>
-        </div>
+          <p>Месяц: {currentMonth} <span style={{ color: '#4caf50', marginLeft: '1rem' }}>🔒 Вход выполнен</span></p>
+      </div>
         <button onClick={onLogout} className="btn btn-secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}>
           🚪 Выход
         </button>
@@ -400,7 +400,7 @@ function App({ onLogout }) {
                       <button onClick={() => removeCategory(cat.id)} className="btn btn-danger">
                         🗑️
                       </button>
-                    </div>
+      </div>
                     <label className="checkbox-label">
                       <input
                         type="checkbox"
