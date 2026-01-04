@@ -14,10 +14,11 @@ function App({ onLogout, currentUser }) {
       { id: 4, name: 'Еда (базовая)', amount: '' },
     ],
     categories: [
-      { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true },
-      { id: 2, name: 'Путешествия', percent: 20, balance: 0, carryOver: true },
-      { id: 3, name: 'Одежда', percent: 15, balance: 0, carryOver: false },
-      { id: 4, name: 'Развлечения', percent: 15, balance: 0, carryOver: false },
+      { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true, isSavings: true },
+      { id: 2, name: 'На черный день', percent: 10, balance: 0, carryOver: true, isSavings: true },
+      { id: 3, name: 'Путешествия', percent: 20, balance: 0, carryOver: true, isSavings: false },
+      { id: 4, name: 'Одежда', percent: 10, balance: 0, carryOver: false, isSavings: false },
+      { id: 5, name: 'Развлечения', percent: 10, balance: 0, carryOver: false, isSavings: false },
     ],
     transactions: [],
     goals: []
@@ -58,9 +59,13 @@ function App({ onLogout, currentUser }) {
   // Общее накопление - сумма всех положительных балансов в категориях
   const totalSavings = categories.reduce((sum, cat) => sum + Math.max(0, cat.balance), 0);
   
-  // Распределение по категориям (первые 50% идут в бизнес, остальные 50% распределяются)
-  const businessAmount = remainingAfterBase * 0.5;
-  const distributionBase = remainingAfterBase * 0.5;
+  // Сумма всех процентов (для проверки)
+  const totalPercent = categories.reduce((sum, cat) => sum + (cat.percent || 0), 0);
+  
+  // Расчет суммы для категории по её проценту
+  const getAmountForCategory = (cat) => {
+    return remainingAfterBase * (cat.percent / 100);
+  };
 
   // Добавление базового расхода
   const addBaseExpense = () => {
@@ -119,13 +124,9 @@ function App({ onLogout, currentUser }) {
       return;
     }
 
-    const newCategories = categories.map((cat, index) => {
-      let allocated = 0;
-      if (index === 0) {
-        allocated = businessAmount;
-      } else {
-        allocated = distributionBase * (cat.percent / 100);
-      }
+    const newCategories = categories.map((cat) => {
+      // Каждая категория получает свой процент от остатка
+      const allocated = getAmountForCategory(cat);
       
       // Если категория переносится, добавляем к текущему балансу (может быть отрицательным)
       // Если не переносится, устанавливаем новую сумму
@@ -368,9 +369,7 @@ function App({ onLogout, currentUser }) {
               <div>
                 {categories.map((cat, index) => {
                   // Расчет ожидаемой суммы при распределении
-                  const expectedAmount = index === 0 
-                    ? businessAmount 
-                    : distributionBase * (cat.percent / 100);
+                  const expectedAmount = getAmountForCategory(cat);
                   
                   return (
                     <div key={cat.id} className="category-item">
@@ -498,9 +497,8 @@ function App({ onLogout, currentUser }) {
                       <input
                         type="number"
                         value={cat.percent}
-                        onChange={(e) => updateCategory(cat.id, 'percent', parseFloat(e.target.value))}
+                        onChange={(e) => updateCategory(cat.id, 'percent', parseFloat(e.target.value) || 0)}
                         placeholder="%"
-                        disabled={index === 0}
                         className="input"
                         style={{ width: '80px' }}
                       />
@@ -523,19 +521,24 @@ function App({ onLogout, currentUser }) {
                       />
                       <span style={{ fontSize: '0.875rem', color: '#666' }}>€</span>
                     </div>
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={cat.carryOver}
-                        onChange={(e) => updateCategory(cat.id, 'carryOver', e.target.checked)}
-                      />
-                      Переносить остаток на следующий месяц
-                    </label>
-                    {index === 0 && (
-                      <p className="info-text">
-                        ℹ️ Первая категория получает 50% от остатка, остальные делят вторую половину
-                      </p>
-                    )}
+                    <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={cat.carryOver}
+                          onChange={(e) => updateCategory(cat.id, 'carryOver', e.target.checked)}
+                        />
+                        ♻️ Переносить остаток
+                      </label>
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          checked={cat.isSavings || false}
+                          onChange={(e) => updateCategory(cat.id, 'isSavings', e.target.checked)}
+                        />
+                        💰 Накопительная (без трат)
+                      </label>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -842,7 +845,7 @@ function App({ onLogout, currentUser }) {
                 <label>Категория</label>
                   <select name="category" required className="input">
                     {categories
-                      .filter(cat => cat.name !== 'Новый бизнес') // Исключаем накопительную категорию
+                      .filter(cat => !cat.isSavings && cat.name !== 'Новый бизнес' && cat.name !== 'На черный день') // Исключаем накопительные категории
                       .map(cat => (
                         <option key={cat.id} value={cat.id}>
                           {cat.name} ({cat.balance.toLocaleString('de-DE')} €{cat.balance < 0 ? ' - ДЕФИЦИТ' : ''})
