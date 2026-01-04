@@ -28,8 +28,8 @@ function App({ onLogout, currentUser }) {
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
   
-  // Подключаем синхронизацию с Supabase
-  const { saveToSupabase, addTransactionToSupabase } = useSupabaseSync(currentUser.id, data, setData);
+  // Подключаем синхронизацию (localStorage + Supabase в будущем)
+  const { addTransactionToSupabase } = useSupabaseSync(currentUser.id, data, setData);
   
   // Удобные геттеры
   const monthlyIncome = data.monthlyIncome;
@@ -47,14 +47,7 @@ function App({ onLogout, currentUser }) {
   const setTransactions = (value) => setData(prev => ({...prev, transactions: value}));
   const setGoals = (value) => setData(prev => ({...prev, goals: value}));
 
-  // Сохранение в Supabase при изменении данных
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      saveToSupabase();
-    }, 1000); // Дебаунс 1 секунда
-    
-    return () => clearTimeout(timer);
-  }, [data, saveToSupabase]);
+  // Сохранение происходит автоматически в хуке useSupabaseSync
 
   // Расчеты
   const totalBaseExpenses = baseExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
