@@ -28,6 +28,7 @@ function App({ onLogout, currentUser }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showAddGoal, setShowAddGoal] = useState(false);
+  const [showAddIncome, setShowAddIncome] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const TRANSACTIONS_PER_PAGE = 20;
   
@@ -114,15 +115,7 @@ function App({ onLogout, currentUser }) {
       return;
     }
 
-    // Проверяем количество распределений в текущем месяце (максимум 2)
-    const distributionsThisMonth = transactions.filter(
-      tr => tr.type === 'distribution' && tr.month === currentMonth
-    ).length;
-    
-    if (distributionsThisMonth >= 2) {
-      alert(`Вы уже распределили бюджет ${distributionsThisMonth} раз(а) в этом месяце.\nМаксимум 2 распределения в месяц.`);
-      return;
-    }
+    // Распределение можно делать сколько угодно раз (не записывается в историю)
 
     const newCategories = categories.map((cat) => {
       // Каждая категория получает свой процент от остатка
@@ -138,14 +131,7 @@ function App({ onLogout, currentUser }) {
 
     setCategories(newCategories);
     
-    // Добавляем транзакцию о распределении через Supabase
-    await addTransactionToSupabase({
-      type: 'distribution',
-      date: new Date().toISOString(),
-      month: currentMonth,
-      amount: remainingAfterBase,
-      description: `Распределение бюджета за ${currentMonth}`
-    });
+    // Распределение НЕ записывается в историю транзакций
 
     // Показываем информацию о дефицитах
     const deficits = newCategories.filter(cat => cat.balance < 0);
@@ -187,6 +173,23 @@ function App({ onLogout, currentUser }) {
 
     await addTransactionToSupabase(transaction);
     setShowAddExpense(false);
+  };
+
+  // Добавление дохода в историю
+  const addIncome = async (amount, description) => {
+    const numAmount = parseFloat(amount);
+    if (!numAmount || numAmount <= 0) return;
+
+    const transaction = {
+      type: 'income',
+      date: new Date().toISOString(),
+      month: currentMonth,
+      amount: numAmount,
+      description: description || 'Доход'
+    };
+
+    await addTransactionToSupabase(transaction);
+    setShowAddIncome(false);
   };
 
   // Переход на новый месяц
@@ -362,9 +365,14 @@ function App({ onLogout, currentUser }) {
             <div className="card">
               <div className="card-header">
                 <h2>Категории расходов</h2>
-                <button onClick={() => setShowAddExpense(true)} className="btn btn-success">
-                  + Добавить расход
-                </button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button onClick={() => setShowAddIncome(true)} className="btn btn-primary">
+                    💰 + Доход
+                  </button>
+                  <button onClick={() => setShowAddExpense(true)} className="btn btn-success">
+                    💸 + Расход
+                  </button>
+                </div>
               </div>
               <div>
                 {categories.map((cat, index) => {
@@ -732,7 +740,7 @@ function App({ onLogout, currentUser }) {
                               <div className="transaction-header">
                                 <div>
                                   <div className="transaction-type">
-                                    {tr.type === 'distribution' ? '🔄 Распределение' : '💸 Расход'}
+                                    {tr.type === 'income' ? '💰 Доход' : '💸 Расход'}
                                   </div>
                                   <div className="transaction-desc">{tr.description || tr.categoryName}</div>
                                   <div className="transaction-date">
@@ -742,8 +750,8 @@ function App({ onLogout, currentUser }) {
                                     })}
                                   </div>
                                 </div>
-                                <div className={`transaction-amount ${tr.type === 'distribution' ? 'positive' : 'negative'}`}>
-                                  {tr.type === 'distribution' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
+                                <div className={`transaction-amount ${tr.type === 'income' ? 'positive' : 'negative'}`}>
+                                  {tr.type === 'income' ? '+' : '-'}{tr.amount.toLocaleString('de-DE')} €
                                 </div>
                               </div>
                             </div>
@@ -878,6 +886,60 @@ function App({ onLogout, currentUser }) {
                 <button
                   type="button"
                   onClick={() => setShowAddExpense(false)}
+                  className="btn btn-secondary"
+                >
+                  Отмена
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Добавить
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Income Modal */}
+      {showAddIncome && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h3>💰 Добавить доход</h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                addIncome(
+                  formData.get('amount'),
+                  formData.get('description')
+                );
+              }}
+            >
+              <div className="form-group">
+                <label>Сумма</label>
+                <input
+                  type="number"
+                  name="amount"
+                  required
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  placeholder="Например: 5000"
+                />
+              </div>
+              <div className="form-group">
+                <label>Описание</label>
+                <input
+                  type="text"
+                  name="description"
+                  required
+                  className="input"
+                  placeholder="Например: Зарплата, Бонус, Подработка"
+                />
+              </div>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={() => setShowAddIncome(false)}
                   className="btn btn-secondary"
                 >
                   Отмена
