@@ -131,9 +131,14 @@ function App({ onLogout, currentUser }) {
   // Добавление расхода
   const addTransaction = async (categoryId, amount, description) => {
     const numAmount = parseFloat(amount);
-    const category = categories.find(c => c.id === categoryId);
+    // Сравниваем ID как строки (могут быть UUID или числа)
+    const category = categories.find(c => String(c.id) === String(categoryId));
     
-    if (!category) return;
+    if (!category) {
+      console.error('Категория не найдена:', categoryId);
+      alert('Ошибка: категория не найдена');
+      return;
+    }
 
     // Баланс рассчитывается АВТОМАТИЧЕСКИ из транзакций
     // НЕ нужно менять cat.balance напрямую
@@ -886,7 +891,7 @@ function App({ onLogout, currentUser }) {
                 e.preventDefault();
                 const formData = new FormData(e.target);
                 addTransaction(
-                  parseInt(formData.get('category')),
+                  formData.get('category'), // Передаем как строку
                   formData.get('amount'),
                   formData.get('description')
                 );
