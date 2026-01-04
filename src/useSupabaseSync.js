@@ -53,12 +53,14 @@ export function useSupabaseSync(userId, data, setData) {
               name: c.name,
               percent: c.percent || 0,
               balance: c.balance || 0,
-              carryOver: c.carry_over || false
+              carryOver: c.carry_over || false,
+              isSavings: c.is_savings || false
             })) : [
-              { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true },
-              { id: 2, name: 'Путешествия', percent: 20, balance: 0, carryOver: true },
-              { id: 3, name: 'Одежда', percent: 15, balance: 0, carryOver: false },
-              { id: 4, name: 'Развлечения', percent: 15, balance: 0, carryOver: false },
+              { id: 1, name: 'Новый бизнес', percent: 50, balance: 0, carryOver: true, isSavings: true },
+              { id: 2, name: 'На черный день', percent: 10, balance: 0, carryOver: true, isSavings: true },
+              { id: 3, name: 'Путешествия', percent: 20, balance: 0, carryOver: true, isSavings: false },
+              { id: 4, name: 'Одежда', percent: 10, balance: 0, carryOver: false, isSavings: false },
+              { id: 5, name: 'Развлечения', percent: 10, balance: 0, carryOver: false, isSavings: false },
             ],
             transactions: trans ? trans.map(t => ({
               id: t.id,
@@ -152,6 +154,7 @@ export function useSupabaseSync(userId, data, setData) {
               percent: cat.percent || 0,
               balance: cat.balance || 0,
               carry_over: cat.carryOver || false,
+              is_savings: cat.isSavings || false,
               sort_order: index
             }))
           );
