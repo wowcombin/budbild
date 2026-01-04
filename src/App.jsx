@@ -229,13 +229,17 @@ function App({ onLogout, currentUser }) {
 
   // Расчет прогресса цели
   const calculateGoalProgress = (goal) => {
+    if (!goal) return { progress: 0, remaining: 0, percent: 0, daysLeft: 0, weeksLeft: 0 };
+    
+    const targetAmount = goal.targetAmount || 0;
     const category = categories.find(c => c.id === parseInt(goal.categoryId));
-    if (!category) return { progress: 0, remaining: goal.targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0 };
+    if (!category) return { progress: 0, remaining: targetAmount, percent: 0, daysLeft: 0, weeksLeft: 0 };
 
-    const currentBalance = category.balance;
-    const progress = currentBalance - goal.startBalance;
-    const remaining = goal.targetAmount - progress;
-    const percent = Math.min((progress / goal.targetAmount) * 100, 100);
+    const currentBalance = category.balance || 0;
+    const startBalance = goal.startBalance || 0;
+    const progress = currentBalance - startBalance;
+    const remaining = targetAmount - progress;
+    const percent = targetAmount > 0 ? Math.min((progress / targetAmount) * 100, 100) : 0;
 
     const targetDate = new Date(goal.targetDate);
     const today = new Date();
@@ -574,7 +578,15 @@ function App({ onLogout, currentUser }) {
               ) : (
                 <div style={{ display: 'grid', gap: '1.5rem' }}>
                   {goals.map(goal => {
-                    const progress = calculateGoalProgress(goal);
+                    const rawProgress = calculateGoalProgress(goal);
+                    const progress = {
+                      percent: rawProgress?.percent || 0,
+                      remaining: rawProgress?.remaining || 0,
+                      currentBalance: rawProgress?.currentBalance || 0,
+                      daysLeft: rawProgress?.daysLeft || 0,
+                      weeksLeft: rawProgress?.weeksLeft || 0,
+                      progress: rawProgress?.progress || 0
+                    };
                     const motivation = getMotivationalMessage(progress.percent);
                     const category = categories.find(c => c.id === parseInt(goal.categoryId));
                     
@@ -657,7 +669,7 @@ function App({ onLogout, currentUser }) {
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>Цель</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-                              {goal.targetAmount.toLocaleString('de-DE')} €
+                              {(goal.targetAmount || 0).toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
@@ -999,7 +1011,7 @@ function App({ onLogout, currentUser }) {
                 <select name="category" required className="input">
                   {categories.map(cat => (
                     <option key={cat.id} value={cat.id}>
-                      {cat.name} ({cat.balance.toLocaleString('de-DE')} €)
+                      {cat.name} ({(cat.balance || 0).toLocaleString('de-DE')} €)
                     </option>
                   ))}
                 </select>
