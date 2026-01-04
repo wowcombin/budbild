@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import './App.css';
 
-function App({ onLogout }) {
+function App({ onLogout, currentUser }) {
   // Состояние для базовых настроек
   const [monthlyIncome, setMonthlyIncome] = useState('');
   const [baseExpenses, setBaseExpenses] = useState([
@@ -30,9 +30,10 @@ function App({ onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAddExpense, setShowAddExpense] = useState(false);
 
-  // Загрузка данных из localStorage
+  // Загрузка данных из localStorage для текущего пользователя
   useEffect(() => {
-    const saved = localStorage.getItem('budgetData');
+    const storageKey = `budgetData_${currentUser.id}`;
+    const saved = localStorage.getItem(storageKey);
     if (saved) {
       const data = JSON.parse(saved);
       if (data.monthlyIncome) setMonthlyIncome(data.monthlyIncome);
@@ -41,18 +42,19 @@ function App({ onLogout }) {
       if (data.transactions) setTransactions(data.transactions);
       if (data.currentMonth) setCurrentMonth(data.currentMonth);
     }
-  }, []);
+  }, [currentUser.id]);
 
-  // Сохранение в localStorage
+  // Сохранение в localStorage для текущего пользователя
   useEffect(() => {
-    localStorage.setItem('budgetData', JSON.stringify({
+    const storageKey = `budgetData_${currentUser.id}`;
+    localStorage.setItem(storageKey, JSON.stringify({
       monthlyIncome,
       baseExpenses,
       categories,
       transactions,
       currentMonth
     }));
-  }, [monthlyIncome, baseExpenses, categories, transactions, currentMonth]);
+  }, [monthlyIncome, baseExpenses, categories, transactions, currentMonth, currentUser.id]);
 
   // Расчеты
   const totalBaseExpenses = baseExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
@@ -196,10 +198,14 @@ function App({ onLogout }) {
     <div className="app">
       {/* Header */}
       <header className="header">
-      <div>
+        <div>
           <h1>💰 Планировщик Бюджета</h1>
-          <p>Месяц: {currentMonth} <span style={{ color: '#4caf50', marginLeft: '1rem' }}>🔒 Вход выполнен</span></p>
-      </div>
+          <p>
+            <span style={{ fontWeight: 'bold', color: '#5c6bc0' }}>{currentUser.displayName}</span>
+            <span style={{ margin: '0 0.5rem', color: '#ccc' }}>•</span>
+            Месяц: {currentMonth}
+          </p>
+        </div>
         <button onClick={onLogout} className="btn btn-secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 1rem' }}>
           🚪 Выход
         </button>
