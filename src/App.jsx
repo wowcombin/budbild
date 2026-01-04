@@ -632,8 +632,13 @@ function App({ onLogout, currentUser }) {
                               {goal.icon} {goal.name}
                             </h3>
                             <p style={{ color: '#666', fontSize: '0.9rem' }}>
-                              Категория: {category?.name} • До: {new Date(goal.targetDate).toLocaleDateString('ru-RU')}
-        </p>
+                              Категория: {category?.name || '⚠️ Не найдена'} • До: {new Date(goal.targetDate).toLocaleDateString('ru-RU')}
+                            </p>
+                            {!category && (
+                              <p style={{ color: '#f44336', fontSize: '0.8rem' }}>
+                                ⚠️ Категория удалена или изменена. Удалите цель и создайте заново.
+                              </p>
+                            )}
       </div>
                           <button
                             onClick={() => deleteGoal(goal.id)}
@@ -691,13 +696,13 @@ function App({ onLogout, currentUser }) {
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>💰 Сейчас (накоп. + зарплата)</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: motivation.color }}>
-                              {progress.currentBalance.toLocaleString('de-DE')} €
+                              {(progress.currentBalance || 0).toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
                             <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📈 В месяц (от зарплаты)</div>
                             <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#4caf50' }}>
-                              +{monthlyAmount.toLocaleString('de-DE')} €
+                              +{(monthlyAmount || 0).toLocaleString('de-DE')} €
                             </div>
                           </div>
                           <div style={{ background: 'white', padding: '1rem', borderRadius: '8px', textAlign: 'center' }}>
@@ -716,8 +721,9 @@ function App({ onLogout, currentUser }) {
                             <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.25rem' }}>📅 Дней до цели</div>
                             <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
                               {progress.remaining <= 0 ? '✅ Достигнуто!' : 
-                               progress.daysToGoal === Infinity ? '∞ (введите зарплату)' : 
-                               `~${progress.daysToGoal} дн`}
+                               !category ? '—' :
+                               monthlyAmount <= 0 ? '∞ (введите зарплату)' : 
+                               `~${Math.ceil(progress.remaining / monthlyAmount * 30)} дн`}
                             </div>
                           </div>
                         </div>
