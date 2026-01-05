@@ -124,3 +124,4 @@ DROP TABLE IF EXISTS budget_settings CASCADE;
 
 Создано с ❤️ для бесшовной синхронизации между устройствами
 
+

@@ -99,3 +99,4 @@ INSERT INTO categories (name, percent, balance, carry_over, sort_order) VALUES
   ('Развлечения', 15, 0, false, 4)
 ON CONFLICT DO NOTHING;
 
+

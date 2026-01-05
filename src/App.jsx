@@ -57,10 +57,10 @@ function App({ onLogout, currentUser }) {
   const totalBaseExpenses = baseExpenses.reduce((sum, exp) => sum + (parseFloat(exp.amount) || 0), 0);
   const remainingAfterBase = (parseFloat(monthlyIncome) || 0) - totalBaseExpenses;
   
-  // Расчет расходов за текущий месяц по категориям
-  const getSpentThisMonth = (categoryId) => {
+  // Расчет расходов за текущий месяц по категориям (по ИМЕНИ категории!)
+  const getSpentThisMonth = (categoryName) => {
     return transactions
-      .filter(t => t.type === 'expense' && t.month === currentMonth && t.categoryId === categoryId)
+      .filter(t => t.type === 'expense' && t.month === currentMonth && t.categoryName === categoryName)
       .reduce((sum, t) => sum + (t.amount || 0), 0);
   };
 
@@ -74,7 +74,7 @@ function App({ onLogout, currentUser }) {
   const getAvailableBalance = (cat) => {
     const initialBalance = cat.balance || 0; // Начальные накопления
     const allocated = getAmountForCategory(cat); // От зарплаты
-    const spent = getSpentThisMonth(cat.id); // Потрачено
+    const spent = getSpentThisMonth(cat.name); // Потрачено (по ИМЕНИ категории!)
     return initialBalance + allocated - spent;
   };
 
@@ -205,7 +205,7 @@ function App({ onLogout, currentUser }) {
     // Для каждой категории: остаток за месяц добавляется к накоплениям
     const updatedCategories = categories.map(cat => {
       const allocated = getAmountForCategory(cat); // От зарплаты
-      const spent = getSpentThisMonth(cat.id); // Потрачено за месяц
+      const spent = getSpentThisMonth(cat.name); // Потрачено за месяц (по имени!)
       const monthlyRemainder = allocated - spent; // Остаток за месяц
       
       if (cat.carryOver) {
@@ -456,7 +456,7 @@ function App({ onLogout, currentUser }) {
               <div>
                 {categories.map((cat, index) => {
                   const allocated = getAmountForCategory(cat);
-                  const spent = getSpentThisMonth(cat.id);
+                  const spent = getSpentThisMonth(cat.name);
                   const available = getAvailableBalance(cat);
                   
                   return (
