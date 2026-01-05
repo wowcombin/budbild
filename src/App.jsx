@@ -830,6 +830,68 @@ function App({ onLogout, currentUser }) {
         {activeTab === 'history' && (
           <div className="card">
             <h2>История транзакций</h2>
+            
+            {/* Статистика */}
+            {transactions.length > 0 && (() => {
+              const now = new Date();
+              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+              const monthAgo = new Date(today.getFullYear(), today.getMonth(), 1);
+              const yearAgo = new Date(today.getFullYear(), 0, 1);
+              
+              const calcStats = (filterFn) => {
+                const filtered = transactions.filter(filterFn);
+                const income = filtered.filter(t => t.type === 'income').reduce((s, t) => s + (t.amount || 0), 0);
+                const expense = filtered.filter(t => t.type === 'expense' && !t.refundPending).reduce((s, t) => s + (t.amount || 0), 0);
+                return { income, expense, balance: income - expense };
+              };
+              
+              const todayStats = calcStats(t => new Date(t.date) >= today);
+              const weekStats = calcStats(t => new Date(t.date) >= weekAgo);
+              const monthStats = calcStats(t => new Date(t.date) >= monthAgo);
+              const yearStats = calcStats(t => new Date(t.date) >= yearAgo);
+              
+              const StatBlock = ({ title, icon, stats }) => (
+                <div style={{
+                  background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+                  borderRadius: '12px',
+                  padding: '1rem',
+                  flex: 1,
+                  minWidth: '140px'
+                }}>
+                  <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem' }}>{icon} {title}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <div style={{ color: '#4caf50', fontSize: '0.9rem' }}>+{stats.income.toLocaleString('de-DE')} €</div>
+                    <div style={{ color: '#f44336', fontSize: '0.9rem' }}>-{stats.expense.toLocaleString('de-DE')} €</div>
+                    <div style={{ 
+                      fontWeight: 'bold', 
+                      fontSize: '1.1rem',
+                      color: stats.balance >= 0 ? '#2e7d32' : '#c62828',
+                      borderTop: '1px solid #ddd',
+                      paddingTop: '0.25rem',
+                      marginTop: '0.25rem'
+                    }}>
+                      {stats.balance >= 0 ? '+' : ''}{stats.balance.toLocaleString('de-DE')} €
+                    </div>
+                  </div>
+                </div>
+              );
+              
+              return (
+                <div style={{
+                  display: 'flex',
+                  gap: '0.75rem',
+                  marginBottom: '1.5rem',
+                  flexWrap: 'wrap'
+                }}>
+                  <StatBlock title="Сегодня" icon="📅" stats={todayStats} />
+                  <StatBlock title="Неделя" icon="📆" stats={weekStats} />
+                  <StatBlock title="Месяц" icon="🗓️" stats={monthStats} />
+                  <StatBlock title="Год" icon="📊" stats={yearStats} />
+                </div>
+              );
+            })()}
+            
             {transactions.length === 0 ? (
               <p className="empty-state">Пока нет транзакций</p>
             ) : (
